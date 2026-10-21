@@ -111,8 +111,8 @@ def _opt(sym):
     return to_ib_option(OptionContract.from_occ(sym))
 
 
-@pytest.fixture
-def ib_engine(cfg, monkeypatch):
+def make_ib_engine(cfg, monkeypatch):
+    """Engine wired to the fake gateway: (engine, fake_ib, synthetic_market). Shared with other tests."""
     md = SyntheticMarketData(today=TODAY)
     fake = FakeIB(md)
 
@@ -138,6 +138,11 @@ def ib_engine(cfg, monkeypatch):
     broker = IBKRBroker(cfg, session, data)
     monkeypatch.setattr("flick.broker.ibkr.us_market_open", lambda: True)
     return Engine(cfg, data, broker, Store(cfg.db_path)), fake, md
+
+
+@pytest.fixture
+def ib_engine(cfg, monkeypatch):
+    return make_ib_engine(cfg, monkeypatch)
 
 
 def test_ibkr_cycle_opens_and_closes(ib_engine):

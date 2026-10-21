@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("positions", help="list open positions")
     sub.add_parser("report", help="performance summary")
     sub.add_parser("review", help="review closed trades and suggest strategy changes")
+    sub.add_parser("ibkr-check", help="test the IBKR paper-trading path: connect, data, place + cancel an unfillable order")
     cl = sub.add_parser("close", help="close a position now")
     cl.add_argument("position_id")
     args = ap.parse_args(argv)
@@ -73,6 +74,16 @@ def main(argv: list[str] | None = None) -> None:
         cfg.ibkr.client_id += 1  # the trader service holds client_id; IBKR needs a distinct one
         uvicorn.run(create_app(cfg), host=args.host, port=args.port)
         return
+
+    if args.cmd == "ibkr-check":
+        from .ibkr_check import run_check
+
+        steps = run_check(cfg)
+        for st in steps:
+            print(f"[{'PASS' if st.ok else 'FAIL'}] {st.name}: {st.detail}")
+        ok = all(st.ok for st in steps) and len(steps) >= 5
+        print("\nIBKR paper trading path works." if ok else "\nIBKR check did not pass; see the failures above.")
+        raise SystemExit(0 if ok else 1)
 
     if args.cmd == "review":  # reads the journal only; no broker connection needed
         from .review import review

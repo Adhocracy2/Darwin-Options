@@ -14,12 +14,15 @@ from .config import Config
 from .data.base import MarketData, ScanCache
 from .manager import ExitAction, PositionManager
 from .models import Candidate, Fill, Leg, OptionContract, OrderIntent, Position, PositionLeg
+from .portfolio import RiskState, assess
 from .risk import RiskGate, assert_never_naked, holdings_of
 from .store import Store
 from .strategies.base import StrategyContext
 from .settings import SETTINGS_KEY, apply as apply_settings, validate as validate_settings
 from .strategies import STRATEGIES
 from . import analysis
+
+RISK_RESET_KEY = "risk_reset"
 
 log = logging.getLogger(__name__)
 
@@ -203,14 +206,26 @@ class Engine:
         unreal = sum(p.unrealized_pnl(marks) for p in open_pos if all(l.symbol in marks for l in p.open_legs))
         self.store.snapshot(acct.equity, sum(p.max_loss for p in open_pos), realized, unreal)
 
+    def risk_state(self, equity: float) -> RiskState:
+        reset, _ = self.store.get_setting(RISK_RESET_KEY)
+        return assess(self.cfg.risk, equity, self.store.snapshots(), self.store.positions("closed"),
+                      reset.get("ts"))
+
+    def reset_drawdown(self) -> None:
+        """Start measuring drawdown from now (lifts a drawdown halt). Logged in the journal."""
+        from .store import now
+        self.store.set_setting(RISK_RESET_KEY, {"ts": now()})
+        self.store.event("risk", "drawdown peak reset from the dashboard")
+
     def open_new(self) -> list[Position]:
         opened: list[Position] = []
         rows: list[dict] = []
         touched: set[str] = set()
         acct = self.broker.account()
         positions = self.store.positions("open")
+        state = self.risk_state(acct.equity)
         for c in self.scan():
-            decision = self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today())
+            decision = self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today(), state)
             if decision.approved and (c.underlying in touched or len(opened) >= self.cfg.max_new_trades_per_cycle):
                 decision.approved, decision.reasons = False, ["cycle limit / already traded this underlying"]
             rows.append(candidate_row(c, decision))
@@ -226,6 +241,7 @@ class Engine:
                     touched.add(c.underlying)
                     acct = self.broker.account()
                     positions = self.store.positions("open")
+                    state = self.risk_state(acct.equity)
         self.store.save_scan(trim_scan(rows))
         return opened
 
@@ -234,7 +250,8 @@ class Engine:
         self.refresh_settings()
         acct = self.broker.account()
         positions = self.store.positions("open")
-        rows = [candidate_row(c, self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today()))
+        state = self.risk_state(acct.equity)
+        rows = [candidate_row(c, self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today(), state))
                 for c in self.scan()]
         self.store.save_scan(trim_scan(rows))
         return rows

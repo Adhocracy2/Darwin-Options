@@ -127,6 +127,35 @@ Tabs: Overview (equity, risk, P&L), Positions (with manual close), Scanner (cand
 reasons), Strategies (on/off and exit rules), Performance (by strategy and exit reason), Journal
 (every open, close, error and settings change).
 
+### Position sizing and risk (growth plan)
+
+Every new trade passes these, in addition to the never-naked check:
+
+| Layer | What it does |
+|---|---|
+| **Stage limits** | Risk per trade, total open risk and position count by account size (`risk.stages`). Small accounts get higher ceilings because the smallest spread is a big share of them; limits tighten as equity grows. |
+| **Measured edge** | After 30 closed trades, risk per trade = half the Kelly bet computed from your own returns on risk, capped by the stage. Before that, at most 5% per trade. If your results show no edge, new trades pause. |
+| **Drawdown brakes** | 15% below the equity peak: trade size halves. 30% below: new trades stop until you reset the peak on the dashboard. A day down 6% stops new trades until tomorrow. |
+| **Correlated groups** | SPY, QQQ, IWM and DIA share one 30% risk budget, because they fall together. |
+| **Hard cap** | No trade may risk more than `max_loss_per_trade` dollars. |
+
+The Overview tab's **Growth plan & risk** card shows progress to your goals, the current limits,
+drawdown, today's change, measured edge and why trades are paused, if they are.
+
+Note: IBKR needs a margin account with at least **$2,000** for spreads, so a smaller account
+can't trade them live. The system will also refuse trades whose max loss exceeds the per-trade limit.
+
+### Checking IBKR paper trading
+
+```bash
+.venv/bin/flick ibkr-check
+```
+
+Connects to your paper account, reads equity, pulls a price and an option chain, then places a
+real credit-spread combo order priced so far from the market it can't fill, confirms IBKR
+accepted it, and cancels it. Each step prints PASS or FAIL with IBKR's own message. It refuses to
+run in live mode.
+
 ### Trade review
 
 `flick review` (and the card at the top of the Performance tab) groups your closed trades by their

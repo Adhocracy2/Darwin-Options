@@ -73,12 +73,28 @@ filters:
   min_bid: 0.05
 
 risk:
-  max_loss_per_trade: 500        # dollars
-  max_loss_per_trade_pct: 0.02   # of equity
-  max_portfolio_risk_pct: 0.25
-  max_positions: 10
+  max_loss_per_trade: 2500       # dollars; hard cap on any one trade
   max_positions_per_underlying: 2
   min_score: 0.0
+  # Growth stages by account size (ceilings). Small accounts can't diversify: the smallest
+  # spread is a big share of them, so limits start higher and tighten as equity grows.
+  stages:
+    - {min_equity: 0,     risk_per_trade_pct: 0.20, max_portfolio_risk_pct: 0.40, max_positions: 2}
+    - {min_equity: 2000,  risk_per_trade_pct: 0.10, max_portfolio_risk_pct: 0.35, max_positions: 4}
+    - {min_equity: 10000, risk_per_trade_pct: 0.05, max_portfolio_risk_pct: 0.30, max_positions: 8}
+    - {min_equity: 50000, risk_per_trade_pct: 0.02, max_portfolio_risk_pct: 0.25, max_positions: 12}
+  # Size from your own results once there are enough: half the Kelly bet, capped by the stage.
+  kelly_multiplier: 0.5
+  min_trades_for_kelly: 30
+  probation_risk_pct: 0.05       # per-trade ceiling before then
+  pause_if_no_edge: true         # stop new trades if your results show no edge
+  drawdown_reduce_at: 0.15       # halve trade size 15% below the equity peak
+  drawdown_halt_at: 0.30         # stop new trades 30% below the peak (reset on the dashboard)
+  daily_loss_halt_pct: 0.06      # no new trades for the rest of a day that's down 6%
+  groups:                        # underlyings that move together share one risk budget
+    US equity index: [SPY, QQQ, IWM, DIA]
+  max_group_risk_pct: 0.30
+  goals: [1000, 10000]
 
 management:
   take_profit_pct: 0.50

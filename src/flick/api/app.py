@@ -174,6 +174,26 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     def equity():
         return engine.store.snapshots()
 
+    @app.get("/api/risk")
+    def risk():
+        acct = engine.broker.account()
+        state = engine.risk_state(acct.equity).as_dict()
+        positions = engine.store.positions("open")
+        state["open_risk"] = sum(p.max_loss for p in positions)
+        state["open_positions"] = len(positions)
+        state["max_loss_per_trade"] = cfg.risk.max_loss_per_trade
+        losses = [c["max_loss"] for c in engine.store.latest_scan()["candidates"]
+                  if not c.get("attach_to") and c.get("max_loss", 0) > 0]
+        state["smallest_trade_max_loss"] = min(losses) if losses else None
+        state["limits"] = {"drawdown_reduce_at": cfg.risk.drawdown_reduce_at, "drawdown_halt_at": cfg.risk.drawdown_halt_at,
+                           "daily_loss_halt_pct": cfg.risk.daily_loss_halt_pct, "max_group_risk_pct": cfg.risk.max_group_risk_pct}
+        return state
+
+    @app.post("/api/risk/reset")
+    def risk_reset():
+        engine.reset_drawdown()
+        return risk()
+
     @app.get("/api/review")
     def trade_review():
         return review_trades(engine.store.positions(None))

@@ -4,6 +4,7 @@ import { api, pct, signed, usd } from "../api";
 import { EquityChart } from "./EquityChart";
 import { PayoffPanel } from "./PayoffChart";
 import { ReviewCard } from "./ReviewCard";
+import { RiskCard } from "./RiskCard";
 
 /** Toggle button for an expandable payoff row. */
 const PayoffToggle = ({ open, onClick }: { open: boolean; onClick: () => void }) =>
@@ -36,6 +37,7 @@ export function Overview({ status, positions, equity, perf }: { status: Status |
         <div className="tile"><div className="label">Realized (all time)</div><div className="value"><Pnl v={perf?.overall.total_pnl} /></div></div>
         <div className="tile"><div className="label">Win rate</div><div className="value">{pct(perf?.overall.win_rate)}</div></div>
       </div>
+      <RiskCard refreshKey={status} live={status?.mode === "live"} />
       <div className="card"><h2>Equity</h2><EquityChart data={equity} /></div>
     </>
   );

@@ -7,6 +7,7 @@ from datetime import date
 
 from .config import Config
 from .models import Candidate, OptionContract, Position
+from .portfolio import RiskState, group_of
 
 
 class NakedShortError(RuntimeError):
@@ -62,9 +63,14 @@ class RiskGate:
         self.cfg = cfg
 
     def check(self, c: Candidate, positions: list[Position], equity: float,
-              buying_power: float, today: date) -> RiskDecision:
+              buying_power: float, today: date, state: "RiskState | None" = None) -> RiskDecision:
+        """`state` (from portfolio.assess) applies stage limits, measured-edge sizing, drawdown
+        brakes and correlated-group caps. Without it, the flat limits in config apply."""
         r, m = self.cfg.risk, self.cfg.management.for_strategy(c.strategy)
         reasons: list[str] = []
+        per_trade_pct = state.risk_per_trade_pct if state else r.max_loss_per_trade_pct
+        portfolio_pct = state.max_portfolio_risk_pct if state else r.max_portfolio_risk_pct
+        max_positions = state.max_positions if state else r.max_positions
 
         if c.expected_value <= 0:
             reasons.append(f"non-positive expected value ({c.expected_value:.2f})")
@@ -84,17 +90,23 @@ class RiskGate:
         else:
             if not math.isfinite(c.max_loss) or c.max_loss <= 0:
                 return RiskDecision(False, 0, reasons + ["max loss must be finite and positive"])
-            if len(positions) >= r.max_positions:
-                reasons.append("max open positions reached")
+            if state and state.halted:
+                reasons.extend(x for x in state.reasons if "paused" in x or "no new entries" in x)
+            if len(positions) >= max_positions:
+                reasons.append(f"max open positions ({max_positions}) reached")
             if sum(p.underlying == c.underlying for p in positions) >= r.max_positions_per_underlying:
                 reasons.append(f"max positions on {c.underlying} reached")
-            cap = min(r.max_loss_per_trade, r.max_loss_per_trade_pct * equity)
+            cap = min(r.max_loss_per_trade, per_trade_pct * equity)
             open_risk = sum(p.max_loss for p in positions)
-            room = r.max_portfolio_risk_pct * equity - open_risk
-            qty = int(min(cap, room, buying_power) // c.max_loss)
+            room = portfolio_pct * equity - open_risk
+            group = group_of(r, c.underlying)
+            group_risk = sum(p.max_loss for p in positions if group_of(r, p.underlying) == group)
+            group_room = r.max_group_risk_pct * equity - group_risk
+            qty = int(min(cap, room, group_room, buying_power) // c.max_loss)
             if qty < 1:
-                reasons.append(f"max loss ${c.max_loss:.0f}/unit exceeds limits "
-                               f"(trade cap ${cap:.0f}, portfolio room ${room:.0f}, BP ${buying_power:.0f})")
+                reasons.append(f"max loss ${c.max_loss:.0f}/unit exceeds limits (trade cap ${cap:.0f} = "
+                               f"{per_trade_pct:.1%} of equity, portfolio room ${room:.0f}, "
+                               f"{group} room ${group_room:.0f}, BP ${buying_power:.0f})")
 
         if qty >= 1:
             after = holdings_of(positions)

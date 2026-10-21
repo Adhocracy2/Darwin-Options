@@ -33,6 +33,9 @@ def test_leaps_open_then_write_new_call(engine, md):
     cfg.risk.max_loss_per_trade_pct = 1.0
     cfg.risk.max_portfolio_risk_pct = 1.0
     cfg.risk.min_score = -1.0
+    cfg.risk.stages = []  # flat limits above apply
+    cfg.risk.probation_risk_pct = 1.0
+    cfg.risk.max_group_risk_pct = 1.0
     md.base_iv, md.realized = 0.30, 0.10  # make the model like it, for the test
     md.half_spread_pct = 0.005  # realistic LEAPS spreads; the default 3% makes LEAPS unprofitable
     engine.strategies = [s for s in engine.strategies if s.name == "leaps_call"]

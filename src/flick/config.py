@@ -82,12 +82,37 @@ class FilterConfig:
 
 @dataclass
 class RiskConfig:
-    max_loss_per_trade: float = 500.0  # dollars, absolute cap
+    max_loss_per_trade: float = 2500.0  # dollars, absolute cap on any one trade
+    # Used only when `stages` is empty:
     max_loss_per_trade_pct: float = 0.02  # of equity
     max_portfolio_risk_pct: float = 0.25  # sum of max losses of open positions / equity
     max_positions: int = 10
     max_positions_per_underlying: int = 2
     min_score: float = 0.0  # minimum expected value per $ risked
+
+    # Growth stages: limits by account size. A small account can't diversify (the smallest
+    # spread is a big share of it), so the ceilings start high and tighten as equity grows.
+    # These are ceilings; measured-edge sizing below can only make trades smaller.
+    stages: list = field(default_factory=lambda: [
+        {"min_equity": 0, "risk_per_trade_pct": 0.20, "max_portfolio_risk_pct": 0.40, "max_positions": 2},
+        {"min_equity": 2_000, "risk_per_trade_pct": 0.10, "max_portfolio_risk_pct": 0.35, "max_positions": 4},
+        {"min_equity": 10_000, "risk_per_trade_pct": 0.05, "max_portfolio_risk_pct": 0.30, "max_positions": 8},
+        {"min_equity": 50_000, "risk_per_trade_pct": 0.02, "max_portfolio_risk_pct": 0.25, "max_positions": 12},
+    ])
+    # Measured-edge sizing: once there are enough closed trades, risk per trade is a fraction
+    # of the Kelly bet computed from your own results. No measured edge -> no new trades.
+    kelly_multiplier: float = 0.5  # half-Kelly: ~75% of the growth for far less drawdown
+    min_trades_for_kelly: int = 30
+    probation_risk_pct: float = 0.05  # per-trade ceiling until there are enough trades
+    pause_if_no_edge: bool = True
+    # Drawdown brakes, measured from the equity peak (or the last manual reset).
+    drawdown_reduce_at: float = 0.15  # halve trade size
+    drawdown_halt_at: float = 0.30  # stop new entries until reset from the dashboard
+    daily_loss_halt_pct: float = 0.06  # no new entries for the rest of the day
+    # Underlyings that move together count as one bet.
+    groups: dict = field(default_factory=lambda: {"US equity index": ["SPY", "QQQ", "IWM", "DIA"]})
+    max_group_risk_pct: float = 0.30
+    goals: list = field(default_factory=lambda: [1_000, 10_000])
 
 
 @dataclass

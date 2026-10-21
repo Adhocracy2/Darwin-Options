@@ -143,6 +143,27 @@ export type Review = {
   suggestions: { strategy: string; title: string; detail: string; setting: string | null; value: unknown }[];
 };
 
+export type RiskState = {
+  equity: number;
+  stage: { min_equity: number; risk_per_trade_pct: number; max_portfolio_risk_pct: number; max_positions: number };
+  risk_per_trade_pct: number;
+  max_portfolio_risk_pct: number;
+  max_positions: number;
+  peak: number;
+  drawdown: number;
+  day_change_pct: number;
+  measured: { trades: number; mean_return_on_risk: number | null; kelly: number | null; win_rate: number | null };
+  size_multiplier: number;
+  halted: boolean;
+  reasons: string[];
+  goals: { target: number; reached: boolean; progress: number }[];
+  open_risk: number;
+  open_positions: number;
+  max_loss_per_trade: number;
+  smallest_trade_max_loss: number | null;
+  limits: { drawdown_reduce_at: number; drawdown_halt_at: number; daily_loss_halt_pct: number; max_group_risk_pct: number };
+};
+
 export const api = {
   status: () => req<Status>("/api/status"),
   positions: (status: "open" | "closed" | "all" = "open") => req<Position[]>(`/api/positions?status=${status}`),
@@ -154,6 +175,8 @@ export const api = {
   equity: () => req<Snapshot[]>("/api/equity"),
   performance: () => req<Performance>("/api/performance"),
   review: () => req<Review>("/api/review"),
+  risk: () => req<RiskState>("/api/risk"),
+  resetRisk: () => req<RiskState>("/api/risk/reset", "POST"),
   settings: () => req<Settings>("/api/settings"),
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
   strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),
