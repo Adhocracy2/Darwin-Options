@@ -13,7 +13,20 @@ merge to main ──> CI on GitHub (lint, 100+ tests, UI build)
                                     health check, roll back if it fails
 ```
 
-## One-time setup (about 15 minutes)
+## Fastest: one script (or let Claude on the PC run it)
+
+```bash
+gh auth login                      # once, so the private repo can be cloned and the runner registered
+git clone https://github.com/Adhocracy2/Booger-Flick.git && cd Booger-Flick
+scripts/setup-pc.sh
+```
+
+`setup-pc.sh` does steps 1–4 below: installs prerequisites, registers the PC as a runner
+labelled `flick-pc` and runs it as a service, does the first deploy into `~/flick`, and installs
+the Flick services. It asks for your sudo password, and for a runner token if the GitHub CLI isn't
+logged in. Re-running it skips whatever is already done.
+
+## One-time setup by hand (about 15 minutes)
 
 Do all of this as the normal Linux user that will run Flick (not root).
 
