@@ -6,12 +6,9 @@ import { Journal, Overview, PerformanceView, Positions, Scanner } from "./compon
 const TABS = ["Overview", "Positions", "Scanner", "Performance", "Journal"] as const;
 type Tab = (typeof TABS)[number];
 
-const BROKERS: Record<string, string> = { alpaca: "Alpaca", ibkr: "Interactive Brokers" };
-
 function brokerLabel(s: Status) {
-  if (s.mode === "sim") return `Local sim · ${s.data} data`;
-  const name = BROKERS[s.broker_kind] ?? s.broker_kind;
-  return s.mode === "live" ? `LIVE · ${name}` : `${name} paper`;
+  if (s.mode === "sim") return s.data === "synthetic" ? "Offline sim" : "Local sim · IBKR data";
+  return s.mode === "live" ? "LIVE · IBKR" : "IBKR paper";
 }
 
 export default function App() {

@@ -94,14 +94,13 @@ def test_ticker_to_quote_uses_model_greeks():
 
 
 def test_config_broker_selection(monkeypatch):
-    cfg = Config(mode="alpaca_paper")
+    cfg = Config()
     cfg.validate()
-    assert (cfg.mode, cfg.broker) == ("paper", "alpaca")
-    cfg = Config(mode="paper", broker="ibkr")
-    cfg.validate()
-    assert cfg.data_source == "ibkr"
+    assert (cfg.mode, cfg.data) == ("paper", "ibkr")
+    with pytest.raises(ValueError):
+        Config(data="alpaca").validate()
     with pytest.raises(ValueError):
         Config(mode="paper", data="synthetic").validate()
     monkeypatch.delenv("FLICK_ALLOW_LIVE", raising=False)
     with pytest.raises(RuntimeError):
-        Config(mode="live", broker="ibkr").validate()
+        Config(mode="live").validate()

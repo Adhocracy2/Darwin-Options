@@ -23,7 +23,7 @@ mkdir -p var
 .venv/bin/pytest -q
 echo
 echo "Done. Next:"
-echo "  1. Put your Alpaca paper keys in .env"
+echo "  1. Start IB Gateway logged into your paper account (see deploy/ib-gateway)"
 echo "  2. .venv/bin/flick check"
 echo "  3. .venv/bin/flick scan"
 echo "  4. scripts/install-services.sh   # run the trader + dashboard under systemd"

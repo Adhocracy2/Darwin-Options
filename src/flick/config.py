@@ -70,9 +70,6 @@ class ExecutionConfig:
     slippage_frac: float = 0.25  # fraction of the half-spread we expect to give up vs mid
     commission_per_contract: float = 0.65
     fill_timeout_s: int = 45
-    # Alpaca multi-leg orders: sign of limit_price for a net credit.
-    # Alpaca treats negative limit_price as a credit. Check on paper before going live.
-    mleg_credit_sign: int = -1
 
 
 @dataclass
@@ -89,10 +86,8 @@ class IBKRConfig:
 
 @dataclass
 class Config:
-    mode: str = "paper"  # sim | paper | live
-    broker: str = "alpaca"  # alpaca | ibkr
-    data: str = ""  # blank = same as broker; or alpaca | ibkr | synthetic
-    options_feed: str = "indicative"  # indicative (free) | opra (paid)
+    mode: str = "paper"  # sim | paper | live  (broker is always Interactive Brokers)
+    data: str = "ibkr"  # ibkr | synthetic (offline testing, sim mode only)
     universe: list[str] = field(default_factory=lambda: ["SPY", "QQQ", "IWM"])
     db_path: str = "var/flick.db"
     log_path: str = "var/flick.log"
@@ -109,29 +104,12 @@ class Config:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     ibkr: IBKRConfig = field(default_factory=IBKRConfig)
 
-    @property
-    def data_source(self) -> str:
-        return self.data or self.broker
-
-    @property
-    def alpaca_key(self) -> str:
-        return os.environ.get("ALPACA_API_KEY", "")
-
-    @property
-    def alpaca_secret(self) -> str:
-        return os.environ.get("ALPACA_SECRET_KEY", "")
-
     def validate(self) -> None:
-        legacy = {"alpaca_paper": ("paper", "alpaca"), "alpaca_live": ("live", "alpaca")}
-        if self.mode in legacy:
-            self.mode, self.broker = legacy[self.mode]
         if self.mode not in {"sim", "paper", "live"}:
             raise ValueError(f"unknown mode {self.mode!r}")
-        if self.broker not in {"alpaca", "ibkr"}:
-            raise ValueError(f"unknown broker {self.broker!r}")
-        if self.data_source not in {"alpaca", "ibkr", "synthetic"}:
+        if self.data not in {"ibkr", "synthetic"}:
             raise ValueError(f"unknown data source {self.data!r}")
-        if self.data_source == "synthetic" and self.mode != "sim":
+        if self.data == "synthetic" and self.mode != "sim":
             raise ValueError("synthetic data can only be used with mode: sim")
         if self.mode == "live" and os.environ.get("FLICK_ALLOW_LIVE") != LIVE_CONFIRMATION:
             raise RuntimeError(

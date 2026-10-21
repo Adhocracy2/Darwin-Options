@@ -131,7 +131,7 @@ def ib_engine(cfg, monkeypatch):
         return out
 
     monkeypatch.setattr(IBSession, "qualify_options", qualify)
-    cfg.mode, cfg.broker = "paper", "ibkr"
+    cfg.mode = "paper"
     session = IBSession(cfg.ibkr, live=False)
     data = IBKRMarketData(session, cfg.risk_free_rate)
     monkeypatch.setattr(data, "today", lambda: TODAY)

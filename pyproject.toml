@@ -5,10 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flick"
 version = "0.1.0"
-description = "Options scanner, analyser, paper trader and position manager (Alpaca)"
+description = "Options scanner, analyser, paper trader and position manager (Interactive Brokers)"
 requires-python = ">=3.10"
 dependencies = [
-  "alpaca-py>=0.40",
   "ib_async>=2.0",
   "pyyaml>=6",
   "python-dotenv>=1",

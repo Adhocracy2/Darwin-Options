@@ -1,4 +1,4 @@
-"""Market data interface shared by the Alpaca and synthetic providers."""
+"""Market data interface shared by the IBKR and synthetic providers."""
 from __future__ import annotations
 
 from datetime import date

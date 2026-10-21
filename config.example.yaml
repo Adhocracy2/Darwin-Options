@@ -1,13 +1,11 @@
 # Copy to config.yaml and edit. Every key is optional; defaults are in src/flick/config.py.
 
-# mode:   sim   = local simulated fills on real quotes from the broker below
-#         paper = the broker's paper account (recommended to start)
-#         live  = real money; also needs FLICK_ALLOW_LIVE in .env
-# broker: alpaca | ibkr
+# Broker: Interactive Brokers, through IB Gateway or TWS.
+# mode: sim   = local simulated fills on real IBKR quotes
+#       paper = your IBKR paper account (recommended to start)
+#       live  = real money; also needs FLICK_ALLOW_LIVE in .env, and the gateway logged into your live account
 mode: paper
-broker: alpaca
-data: ""                  # blank = same as broker; or alpaca | ibkr | synthetic (sim only)
-options_feed: indicative  # Alpaca only: indicative is free; opra needs a data subscription
+data: ibkr                # ibkr | synthetic (offline testing, sim mode only)
 
 ibkr:
   host: 127.0.0.1
@@ -70,4 +68,3 @@ execution:
   slippage_frac: 0.25
   commission_per_contract: 0.65
   fill_timeout_s: 45
-  mleg_credit_sign: -1   # check against an Alpaca paper fill before going live

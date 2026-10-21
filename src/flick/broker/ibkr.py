@@ -4,7 +4,7 @@ Spreads go as one combo (BAG) limit order, so legs fill together. IBKR prices a
 combo as a debit: the order is a BUY of the combo, and a credit is a negative
 limit price. Example: a 1.10 credit spread is BUY combo @ -1.10.
 
-Safety (same rules as the Alpaca broker):
+Safety:
 - Buy legs are listed first.
 - An urgent multi-leg close that doesn't fill falls back to closing legs one at a
   time, buying back shorts first.
