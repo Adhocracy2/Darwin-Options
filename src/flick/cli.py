@@ -1,0 +1,93 @@
+"""Command line: flick check | scan | run | loop | serve | positions | report | close."""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import time
+from pathlib import Path
+
+from .config import load_config
+from .factory import build_engine
+from .manager import ExitAction
+from .report import performance
+
+
+def _setup_logging(path: str) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                        handlers=[logging.StreamHandler(), logging.FileHandler(path)])
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(prog="flick")
+    ap.add_argument("-c", "--config", default=None, help="config YAML (default: config.yaml)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check", help="test broker and data connectivity")
+    s = sub.add_parser("scan", help="scan and risk-check candidates, no trading")
+    s.add_argument("--top", type=int, default=15)
+    r = sub.add_parser("run", help="run one cycle: manage, scan, trade")
+    r.add_argument("--force", action="store_true", help="run even if the market is closed")
+    lp = sub.add_parser("loop", help="run cycles forever")
+    lp.add_argument("--interval", type=int, default=300)
+    sv = sub.add_parser("serve", help="start the API + dashboard")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8000)
+    sub.add_parser("positions", help="list open positions")
+    sub.add_parser("report", help="performance summary")
+    cl = sub.add_parser("close", help="close a position now")
+    cl.add_argument("position_id")
+    args = ap.parse_args(argv)
+
+    cfg = load_config(args.config)
+    _setup_logging(cfg.log_path)
+    log = logging.getLogger("flick")
+
+    if args.cmd == "serve":
+        import uvicorn
+
+        from .api.app import create_app
+
+        uvicorn.run(create_app(cfg), host=args.host, port=args.port)
+        return
+
+    eng = build_engine(cfg)
+    if args.cmd == "check":
+        acct = eng.broker.account()
+        print(f"broker={eng.broker.name} equity={acct.equity:.2f} bp={acct.buying_power:.2f} open={acct.is_market_open}")
+        sym = cfg.universe[0]
+        print(f"{sym} spot={eng.md.spot(sym):.2f}")
+    elif args.cmd == "scan":
+        rows = eng.preview()
+        for row in rows[: args.top]:
+            flag = "OK " if row["approved"] else "-- "
+            print(f"{flag}{row['description']:<60} credit={row['net_credit']:>6.2f} maxloss={row['max_loss']:>7.0f} "
+                  f"pop={row['pop']:.0%} ev={row['expected_value']:>7.2f} score={row['score']:.3f} qty={row['qty']}")
+            if row["reasons"]:
+                print("     " + "; ".join(row["reasons"]))
+        print(f"{len(rows)} candidates")
+    elif args.cmd == "run":
+        print(json.dumps(eng.run_once(force=args.force), indent=2))
+    elif args.cmd == "loop":
+        while True:
+            try:
+                log.info("cycle: %s", eng.run_once())
+            except Exception:
+                log.exception("cycle failed")
+            time.sleep(args.interval)
+    elif args.cmd == "positions":
+        for p in eng.store.positions("open"):
+            legs = ", ".join(f"{l.qty:+d} {l.symbol} @ {l.entry_price:.2f}" for l in p.open_legs)
+            print(f"{p.id} {p.strategy} {p.underlying} max_loss={p.max_loss:.0f} | {legs}")
+    elif args.cmd == "report":
+        print(json.dumps(performance(eng.store.positions(None), eng.store.snapshots()), indent=2, default=str))
+    elif args.cmd == "close":
+        p = eng.store.get_position(args.position_id)
+        if not p or p.status != "open":
+            raise SystemExit("no such open position")
+        print("closed" if eng.close_legs(p, ExitAction(p.id, [l.symbol for l in p.open_legs], "manual close"))
+              else "not filled")
+
+
+if __name__ == "__main__":
+    main()

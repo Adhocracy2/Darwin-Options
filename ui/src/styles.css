@@ -1,0 +1,86 @@
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2;
+  --surface-1: #fcfcfb;
+  --border: #e3e2de;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7974;
+  --series-1: #2a78d6;
+  --grid: #ebeae6;
+  --good: #0ca30c;
+  --critical: #d03b3b;
+  --warning: #fab219;
+  --accent: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2e2c;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e87;
+    --series-1: #3987e5;
+    --grid: #262624;
+    --accent: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110;
+  --surface-1: #1a1a19;
+  --border: #2e2e2c;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e87;
+  --series-1: #3987e5;
+  --grid: #262624;
+  --accent: #3987e5;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+header h1 { font-size: 20px; margin: 0; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge { border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--text-secondary); background: var(--surface-1); }
+.badge.live { border-color: var(--critical); color: var(--critical); font-weight: 600; }
+nav { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
+nav button { background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 12px; color: var(--text-secondary); cursor: pointer; font: inherit; white-space: nowrap; }
+nav button.active { background: var(--surface-1); border-color: var(--border); color: var(--text-primary); font-weight: 600; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.card h2 { font-size: 15px; margin: 0 0 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+.tile .label { color: var(--text-secondary); font-size: 12px; }
+.tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 12px; color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+.muted { color: var(--text-muted); }
+.small { font-size: 12px; }
+.pos { color: var(--good); }
+.neg { color: var(--critical); }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+button.btn { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; cursor: pointer; }
+button.btn.secondary { background: none; color: var(--text-primary); border: 1px solid var(--border); }
+button.btn:disabled { opacity: .5; cursor: default; }
+.status-ok::before { content: "✓ "; }
+.status-no::before { content: "✕ "; }
+.error { background: color-mix(in srgb, var(--critical) 12%, transparent); border: 1px solid var(--critical); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.legs { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; }
+.tooltip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); white-space: nowrap; }
+.legs div { white-space: nowrap; }

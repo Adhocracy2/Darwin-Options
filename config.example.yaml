@@ -1,0 +1,63 @@
+# Copy to config.yaml and edit. Every key is optional; defaults are in src/flick/config.py.
+
+# sim          = local paper broker (fills simulated from live Alpaca quotes)
+# alpaca_paper = Alpaca's paper account (recommended to start)
+# alpaca_live  = real money; also needs FLICK_ALLOW_LIVE in .env
+mode: alpaca_paper
+data: alpaca              # alpaca | synthetic (synthetic only works with mode: sim)
+options_feed: indicative  # indicative is free; opra needs an Alpaca data subscription
+
+universe: [SPY, QQQ, IWM]
+allow_new_entries: true
+max_new_trades_per_cycle: 2
+vol_blend: 0.5            # forecast vol = 0.5*IV + 0.5*30-day realized vol
+
+credit_spread:
+  enabled: true
+  sides: [put, call]
+  dte_min: 30
+  dte_max: 50
+  short_delta_min: 0.15
+  short_delta_max: 0.30
+  widths: [1, 2, 5]
+  min_credit_pct_of_width: 0.20
+  min_otm_pct: 0.02
+
+leaps_call:
+  # A deep-ITM SPY LEAPS costs ~$5-10k. With the default $500 trade cap only
+  # cheaper underlyings will qualify; raise risk.max_loss_per_trade if you want these.
+  enabled: true
+  leaps_dte_min: 270
+  leaps_delta_min: 0.75
+  short_dte_min: 21
+  short_dte_max: 45
+  short_delta_min: 0.15
+  short_delta_max: 0.30
+
+filters:
+  min_open_interest: 100
+  max_leg_spread_pct: 0.15
+  min_bid: 0.05
+
+risk:
+  max_loss_per_trade: 500        # dollars
+  max_loss_per_trade_pct: 0.02   # of equity
+  max_portfolio_risk_pct: 0.25
+  max_positions: 10
+  max_positions_per_underlying: 2
+  min_score: 0.0
+
+management:
+  take_profit_pct: 0.50
+  stop_loss_mult: 2.0
+  close_at_dte: 21
+  min_short_extrinsic: 0.10
+  itm_buffer_pct: 0.005
+  leaps_close_at_dte: 120
+  leaps_stop_loss_pct: 0.40
+
+execution:
+  slippage_frac: 0.25
+  commission_per_contract: 0.65
+  fill_timeout_s: 45
+  mleg_credit_sign: -1   # check against an Alpaca paper fill before going live

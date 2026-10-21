@@ -1,0 +1,14 @@
+[Unit]
+Description=Flick dashboard (API + React UI)
+After=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@DIR@
+EnvironmentFile=@DIR@/.env
+# Localhost only on purpose: the dashboard can place trades and has no login.
+ExecStart=@DIR@/.venv/bin/flick serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

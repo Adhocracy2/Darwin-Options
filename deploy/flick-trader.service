@@ -1,0 +1,15 @@
+[Unit]
+Description=Flick options trader (manage, scan, trade every 5 minutes while the market is open)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@DIR@
+EnvironmentFile=@DIR@/.env
+ExecStart=@DIR@/.venv/bin/flick loop --interval 300
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
