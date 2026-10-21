@@ -16,6 +16,7 @@ from ..manager import ExitAction
 from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
 from ..report import performance
+from ..review import review as review_trades
 from ..strategies import STRATEGIES
 from ..settings import INFO as SETTINGS_INFO
 from ..settings import SETTINGS_KEY, SettingsError, describe as describe_settings
@@ -172,6 +173,10 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     @app.get("/api/equity")
     def equity():
         return engine.store.snapshots()
+
+    @app.get("/api/review")
+    def trade_review():
+        return review_trades(engine.store.positions(None))
 
     @app.get("/api/performance")
     def perf():

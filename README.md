@@ -127,6 +127,14 @@ Tabs: Overview (equity, risk, P&L), Positions (with manual close), Scanner (cand
 reasons), Strategies (on/off and exit rules), Performance (by strategy and exit reason), Journal
 (every open, close, error and settings change).
 
+### Trade review
+
+`flick review` (and the card at the top of the Performance tab) groups your closed trades by their
+conditions at entry: short delta, days to expiry, credit as % of width, implied ÷ realized
+volatility, and exit reason. It compares the model's predicted win rate with the actual one.
+It suggests a setting change only when a group has 20+ trades and the difference is larger than
+chance. With fewer trades it shows the tables but no suggestions.
+
 ### Payoff diagrams
 
 Every strategy, scanner candidate and open position has a payoff diagram (the **Payoff** button

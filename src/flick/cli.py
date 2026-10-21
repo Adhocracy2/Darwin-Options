@@ -19,6 +19,27 @@ def _setup_logging(path: str) -> None:
                         handlers=[logging.StreamHandler(), logging.FileHandler(path)])
 
 
+def print_review(r: dict) -> None:
+    print(f"{r['trades']} closed trades reviewed")
+    if r.get("note"):
+        print(r["note"])
+    for s in r["strategies"]:
+        o = s["overall"]
+        print(f"\n== {s['strategy']}: {o['trades']} trades, win rate {o['win_rate']:.0%}, "
+              f"avg return on risk {o['avg_return_on_risk']:+.1%}, P&L {o['total_pnl']:+.0f}")
+        if m := s.get("model"):
+            print(f"   model predicted {m['predicted_win_rate']:.0%} winners, actual {m['actual_win_rate']:.0%}")
+        for name, groups in s["groups"].items():
+            print(f"   by {name}:")
+            for g in groups:
+                print(f"     {g['label']:>12}  n={g['trades']:<4} win {g['win_rate']:.0%}  "
+                      f"return on risk {g['avg_return_on_risk']:+.1%}")
+    print("\nSuggestions:" if r["suggestions"] else "\nNo changes suggested yet.")
+    for x in r["suggestions"]:
+        change = f"  -> set {x['setting']} = {x['value']}" if x["setting"] else ""
+        print(f" * [{x['strategy']}] {x['title']}: {x['detail']}{change}")
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="flick")
     ap.add_argument("-c", "--config", default=None, help="config YAML (default: config.yaml)")
@@ -35,6 +56,7 @@ def main(argv: list[str] | None = None) -> None:
     sv.add_argument("--port", type=int, default=8000)
     sub.add_parser("positions", help="list open positions")
     sub.add_parser("report", help="performance summary")
+    sub.add_parser("review", help="review closed trades and suggest strategy changes")
     cl = sub.add_parser("close", help="close a position now")
     cl.add_argument("position_id")
     args = ap.parse_args(argv)
@@ -50,6 +72,13 @@ def main(argv: list[str] | None = None) -> None:
 
         cfg.ibkr.client_id += 1  # the trader service holds client_id; IBKR needs a distinct one
         uvicorn.run(create_app(cfg), host=args.host, port=args.port)
+        return
+
+    if args.cmd == "review":  # reads the journal only; no broker connection needed
+        from .review import review
+        from .store import Store
+
+        print_review(review(Store(cfg.db_path).positions(None)))
         return
 
     eng = build_engine(cfg)

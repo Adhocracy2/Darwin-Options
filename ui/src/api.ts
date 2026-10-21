@@ -129,6 +129,20 @@ export type Payoff = {
 export type StrategyPayoff = { name: string; label: string; description: string; source: string; payoff: Payoff };
 export type PayoffRequest = { strategy: string; net_credit: number; qty: number; legs: { symbol: string; ratio: number }[] };
 
+export type ReviewGroup = { label: string; trades: number; win_rate: number; avg_return_on_risk: number; total_pnl: number };
+export type Review = {
+  trades: number;
+  min_trades_per_group: number;
+  note?: string;
+  strategies: {
+    strategy: string;
+    overall: ReviewGroup;
+    model?: { predicted_win_rate: number; actual_win_rate: number };
+    groups: Record<string, ReviewGroup[]>;
+  }[];
+  suggestions: { strategy: string; title: string; detail: string; setting: string | null; value: unknown }[];
+};
+
 export const api = {
   status: () => req<Status>("/api/status"),
   positions: (status: "open" | "closed" | "all" = "open") => req<Position[]>(`/api/positions?status=${status}`),
@@ -139,6 +153,7 @@ export const api = {
   events: () => req<Event[]>("/api/events"),
   equity: () => req<Snapshot[]>("/api/equity"),
   performance: () => req<Performance>("/api/performance"),
+  review: () => req<Review>("/api/review"),
   settings: () => req<Settings>("/api/settings"),
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
   strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),

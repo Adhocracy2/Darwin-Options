@@ -3,6 +3,7 @@ import type { Candidate, Event, Performance, Position, Snapshot, Stats, Status }
 import { api, pct, signed, usd } from "../api";
 import { EquityChart } from "./EquityChart";
 import { PayoffPanel } from "./PayoffChart";
+import { ReviewCard } from "./ReviewCard";
 
 /** Toggle button for an expandable payoff row. */
 const PayoffToggle = ({ open, onClick }: { open: boolean; onClick: () => void }) =>
@@ -156,6 +157,7 @@ export function PerformanceView({ perf }: { perf: Performance | null }) {
   if (!perf) return null;
   return (
     <>
+      <ReviewCard />
       <div className="tiles">
         <div className="tile"><div className="label">Closed trades</div><div className="value">{perf.overall.trades}</div></div>
         <div className="tile"><div className="label">Expectancy / trade</div><div className="value">{usd(perf.overall.expectancy)}</div></div>

@@ -129,3 +129,11 @@ button.icon { background: none; border: 1px solid var(--border); border-radius: 
 button.icon[aria-expanded="true"] { background: var(--surface-1); color: var(--text-primary); }
 .payoff-details { margin-top: 10px; }
 .payoff-details summary { cursor: pointer; color: var(--text-secondary); }
+
+/* ---- trade review ---- */
+.suggestions { margin: 0 0 12px; padding-left: 18px; }
+.suggestions li { margin-bottom: 10px; }
+.review-strategy { border-top: 1px solid var(--border); padding: 10px 0; }
+.review-strategy summary { cursor: pointer; }
+.review-strategy table { margin-top: 8px; }
+h3.small { margin: 12px 0 6px; }
