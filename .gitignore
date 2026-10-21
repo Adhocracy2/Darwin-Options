@@ -9,3 +9,4 @@ ui/node_modules/
 ui/dist/
 .pytest_cache/
 deploy/ib-gateway/.env
+ui/*.tsbuildinfo
