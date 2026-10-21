@@ -15,7 +15,7 @@ def test_cycle_opens_then_manages(engine, md):
     assert all(p.max_loss <= engine.cfg.risk.max_loss_per_trade for p in engine.store.positions("open"))
 
     # Move time inside the close window: every short must be closed out, never left to expire.
-    md.advance(30)
+    md.advance(45)
     engine.cfg.allow_new_entries = False
     engine.run_once()
     never_naked(engine)
@@ -34,6 +34,7 @@ def test_leaps_open_then_write_new_call(engine, md):
     cfg.risk.max_portfolio_risk_pct = 1.0
     cfg.risk.min_score = -1.0
     md.base_iv, md.realized = 0.30, 0.10  # make the model like it, for the test
+    md.half_spread_pct = 0.005  # realistic LEAPS spreads; the default 3% makes LEAPS unprofitable
     engine.strategies = [s for s in engine.strategies if s.name == "leaps_call"]
 
     assert engine.run_once()["opened"]

@@ -63,7 +63,7 @@ class RiskGate:
 
     def check(self, c: Candidate, positions: list[Position], equity: float,
               buying_power: float, today: date) -> RiskDecision:
-        r, m = self.cfg.risk, self.cfg.management
+        r, m = self.cfg.risk, self.cfg.management.for_strategy(c.strategy)
         reasons: list[str] = []
 
         if c.expected_value <= 0:

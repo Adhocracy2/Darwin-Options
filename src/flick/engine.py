@@ -10,14 +10,13 @@ from pathlib import Path
 
 from .broker.base import Broker
 from .config import Config
-from .data.base import MarketData
+from .data.base import MarketData, ScanCache
 from .manager import ExitAction, PositionManager
 from .models import Candidate, Fill, Leg, OptionContract, OrderIntent, Position, PositionLeg
 from .risk import RiskGate, assert_never_naked, holdings_of
 from .store import Store
 from .strategies.base import StrategyContext
-from .strategies.credit_spread import CreditSpread
-from .strategies.leaps_call import LeapsCall
+from .strategies import STRATEGIES
 from . import analysis
 
 log = logging.getLogger(__name__)
@@ -42,16 +41,12 @@ class Engine:
         self.cfg, self.md, self.broker, self.store = cfg, md, broker, store
         self.gate = RiskGate(cfg)
         self.manager = PositionManager(cfg)
-        self.strategies = []
-        if cfg.credit_spread.enabled:
-            self.strategies.append(CreditSpread())
-        if cfg.leaps_call.enabled:
-            self.strategies.append(LeapsCall())
+        self.strategies = [cls() for name, cls in STRATEGIES.items() if getattr(cfg, name).enabled]
 
     # ---- scanning ------------------------------------------------------------
 
     def scan(self, symbols: list[str] | None = None) -> list[Candidate]:
-        ctx = StrategyContext(self.cfg, self.md, self.store.positions("open"), self.md.today())
+        ctx = StrategyContext(self.cfg, ScanCache(self.md), self.store.positions("open"), self.md.today())
         out: list[Candidate] = []
         for sym in symbols or self.cfg.universe:
             for strat in self.strategies:

@@ -30,3 +30,28 @@ def enrich(q: OptionQuote, spot: float, r: float, today: date) -> OptionQuote:
         g = pricing.greeks(spot, q.contract.strike, t, r, q.iv, q.contract.right)
         q.delta, q.gamma, q.theta, q.vega = g["delta"], g["gamma"], g["theta"], g["vega"]
     return q
+
+
+class ScanCache:
+    """Wraps a MarketData for one scan so strategies asking for the same chain or
+    price share one request. Important on IBKR, where requests are rate-limited."""
+
+    def __init__(self, md: MarketData):
+        self.md = md
+        self._chains: dict[tuple, Chain] = {}
+        self._spots: dict[str, float] = {}
+
+    def __getattr__(self, name):
+        return getattr(self.md, name)
+
+    def spot(self, symbol: str) -> float:
+        if symbol not in self._spots:
+            self._spots[symbol] = self.md.spot(symbol)
+        return self._spots[symbol]
+
+    def chain(self, symbol: str, dte_min: int, dte_max: int, right: Right | None = None,
+              strike_pct: float = 0.35) -> Chain:
+        key = (symbol, dte_min, dte_max, right, strike_pct)
+        if key not in self._chains:
+            self._chains[key] = self.md.chain(symbol, dte_min, dte_max, right, strike_pct)
+        return self._chains[key]

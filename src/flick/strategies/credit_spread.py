@@ -39,8 +39,11 @@ class CreditSpread:
                         max_loss = (width - credit) * MULTIPLIER
                         sigma = analysis.forecast_vol(short.iv, chain.realized_vol, cfg.vol_blend)
                         ev, pop = analysis.evaluate(
-                            legs, credit, chain.spot, ctx.today, sigma, cfg.risk_free_rate, {})
+                            legs, credit, chain.spot, ctx.today, sigma, cfg.risk_free_rate,
+                            {q.contract.symbol: q.iv or sigma for q in (short, long)},
+                            cfg.management.for_strategy(self.name).close_at_dte)
                         ev -= 2 * cfg.execution.commission_per_contract * 2  # open + close, 2 legs
+                        ev -= analysis.closing_cost(legs, qmap, cfg.execution.slippage_frac)
                         out.append(Candidate(
                             strategy=self.name, underlying=symbol, legs=legs, net_credit=round(credit, 2),
                             max_loss=max_loss, max_profit=credit * MULTIPLIER, pop=pop,

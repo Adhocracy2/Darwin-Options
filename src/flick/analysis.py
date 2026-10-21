@@ -8,7 +8,7 @@ that edge enters the model. Treat the numbers as a ranking signal, not a promise
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, timedelta
 
 from .config import FilterConfig
 from .models import MULTIPLIER, Leg, OptionQuote, Right
@@ -36,19 +36,29 @@ def expected_net_credit(legs: list[Leg], quotes: dict[str, OptionQuote], slippag
                 for l in legs)
 
 
+def closing_cost(legs: list[Leg], quotes: dict[str, OptionQuote], slippage_frac: float) -> float:
+    """Expected dollars per unit lost to the bid/ask spread when closing, at today's spreads."""
+    return sum(abs(l.ratio) * slippage_frac * (quotes[l.contract.symbol].ask - quotes[l.contract.symbol].bid) / 2
+               for l in legs) * MULTIPLIER
+
+
 def forecast_vol(iv: float | None, rv: float | None, blend: float) -> float:
     iv = iv or rv or 0.2
     return iv if rv is None else blend * iv + (1 - blend) * rv
 
 
 def evaluate(legs: list[Leg], net_credit: float, spot: float, today: date, sigma: float,
-             r: float, leg_ivs: dict[str, float]) -> tuple[float, float]:
-    """(expected P&L in dollars per unit, probability of profit) at the first leg expiry.
+             r: float, leg_ivs: dict[str, float], exit_dte: int = 0) -> tuple[float, float]:
+    """(expected P&L in dollars per unit, probability of profit) at the planned exit.
 
-    Legs that outlive the horizon are valued with Black-Scholes at their own IV.
+    The exit is `exit_dte` days before the first leg expires (the manager's close
+    window). The underlying moves with the forecast vol `sigma`; options still alive
+    at the exit are repriced with Black-Scholes at their own current IV (`leg_ivs`),
+    so the model doesn't assume implied vol will fall.
     """
-    horizon = min(l.contract.expiry for l in legs)
-    t = max((horizon - today).days, 1) / 365
+    first = min(l.contract.expiry for l in legs)
+    horizon = max(first - timedelta(days=max(exit_dte, 0)), today + timedelta(days=1))
+    t = (horizon - today).days / 365
     ev = pop = wsum = 0.0
     for z in _Z:
         w = math.exp(-0.5 * z * z)

@@ -30,6 +30,7 @@ class LeapsCall:
         cfg, lc = ctx.cfg, ctx.cfg.leaps_call
         held = [p for p in ctx.positions if p.strategy == self.name and p.underlying == symbol]
         spot, rv, shorts = self._short_calls(symbol, ctx)
+        exit_dte = cfg.management.for_strategy(self.name).close_at_dte
         out: list[Candidate] = []
 
         # 1. Attach a short call to LEAPS we already own.
@@ -51,8 +52,10 @@ class LeapsCall:
                 legs = [Leg(s.contract, -1)]
                 credit = analysis.expected_net_credit(legs, {s.contract.symbol: s}, cfg.execution.slippage_frac)
                 sigma = analysis.forecast_vol(s.iv, rv, cfg.vol_blend)
-                ev, pop = analysis.evaluate(legs, credit, spot, ctx.today, sigma, cfg.risk_free_rate, {})
+                ev, pop = analysis.evaluate(legs, credit, spot, ctx.today, sigma, cfg.risk_free_rate,
+                                            {s.contract.symbol: s.iv or sigma}, exit_dte)
                 ev -= 2 * cfg.execution.commission_per_contract
+                ev -= analysis.closing_cost(legs, {s.contract.symbol: s}, cfg.execution.slippage_frac)
                 out.append(Candidate(
                     strategy=self.name, underlying=symbol, legs=legs, net_credit=round(credit, 2),
                     max_loss=0.0, max_profit=credit * MULTIPLIER, pop=pop, expected_value=ev,
@@ -79,8 +82,10 @@ class LeapsCall:
                 continue  # assignment on the short would lock in a loss
             sigma = analysis.forecast_vol(s.iv, rv, cfg.vol_blend)
             ev, pop = analysis.evaluate(legs, credit, spot, ctx.today, sigma, cfg.risk_free_rate,
-                                        {leaps.contract.symbol: leaps.iv or sigma})
+                                        {leaps.contract.symbol: leaps.iv or sigma,
+                                         s.contract.symbol: s.iv or sigma}, exit_dte)
             ev -= 4 * cfg.execution.commission_per_contract
+            ev -= analysis.closing_cost(legs, qmap, cfg.execution.slippage_frac)
             max_loss = debit * MULTIPLIER
             out.append(Candidate(
                 strategy=self.name, underlying=symbol, legs=legs, net_credit=round(credit, 2),

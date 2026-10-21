@@ -3,11 +3,23 @@
 An options trading system that scans, analyses, paper-trades and manages
 defined-risk options trades through **Interactive Brokers (IBKR)**, with a React dashboard.
 
-It starts with two strategies:
+## Strategies
 
-- **Credit spreads.** Bull put and bear call verticals, 30–50 DTE, short leg at 0.15–0.30 delta.
-- **LEAPS-backed calls** (poor man's covered call). Buy a deep-ITM LEAPS call and sell
-  near-term OTM calls against it. When a short call is closed, a new one is written against the same LEAPS.
+Every strategy is defined-risk: the most it can lose is known before the order goes in.
+
+| Strategy | Legs | Max loss | Managed by |
+|---|---|---|---|
+| **Credit spread** (`credit_spread`) | Bull put or bear call vertical, 30–50 DTE, short at 0.15–0.30 delta | width − credit | 50% profit, 2× credit stop, close at 21 DTE |
+| **Iron condor** (`iron_condor`) | Put credit spread + call credit spread, same expiry and width, shorts at 0.10–0.20 delta | width − credit (only one side can lose) | same as credit spread |
+| **Iron butterfly** (`iron_butterfly`) | Short ATM put + call at one strike, long wings 5 or 10 wide | wing width − credit | 25% profit, 2× credit stop, close at 21 DTE |
+| **Calendar** (`calendar`) | Short front month (25–40 DTE), long back month at the same strike, puts or calls | debit paid | 25% profit, stop at 50% of debit, close at 5 DTE |
+| **LEAPS-backed calls** (`leaps_call`) | Long deep-ITM LEAPS call, short 21–45 DTE OTM calls written against it, repeatedly | net debit | short call: 50% profit / 21 DTE; LEAPS sold at 120 DTE or −40% |
+
+Turn each on or off with `enabled` in `config.yaml`. Management settings can be changed per
+strategy under `management.overrides`.
+
+Not included, because they have naked short legs: short strangles and straddles, jade lizards,
+naked puts, ratio spreads.
 
 ## Safety rules (enforced in code)
 
@@ -15,7 +27,7 @@ It starts with two strategies:
 |---|---|
 | **Never naked.** Every short option must be covered by a long option of the same type that expires no earlier. This is checked before *every* order, opens and closes alike, and the order is refused otherwise. | `risk.py` (`assert_never_naked`), `engine.py` |
 | **Capped loss.** Each trade's max loss must be finite and under `max_loss_per_trade` (dollars) and `max_loss_per_trade_pct` of equity. Total open max loss stays under `max_portfolio_risk_pct`. Position size is derived from these. | `risk.py` |
-| **Never assigned.** Short legs are closed (crossing the spread if needed) when the strike is threatened, when extrinsic value drops below `min_short_extrinsic` while in the money, at `close_at_dte`, and in all cases before the last day. | `manager.py` |
+| **Never assigned.** Short legs are closed (crossing the spread if needed) when the strike is threatened, when extrinsic value drops below `min_short_extrinsic` while in the money, at `close_at_dte`, and in all cases before the last day. Iron butterflies and calendars start with at-the-money shorts, so for them only the extrinsic-value and DTE checks apply. | `manager.py` |
 | **LEAPS calls can't lose on assignment.** The short strike must be above LEAPS strike + net cost. | `strategies/leaps_call.py` |
 | **Closes buy back shorts first.** Combo orders list buys first. If an urgent combo close doesn't fill, legs are closed one at a time, shorts first. | `broker/ibkr.py` |
 | **Live trading is opt-in twice.** It needs `mode: live` *and* `FLICK_ALLOW_LIVE=yes-i-understand-real-money` in `.env`. | `config.py` |
@@ -29,9 +41,12 @@ Each cycle (every 5 minutes while the market is open):
 1. **Reconcile** the journal against IBKR's positions.
 2. **Manage** open positions: profit target (50% of credit), stop (2× credit), DTE exit, assignment risk.
 3. **Scan** the universe. Each strategy proposes candidates priced at mid minus expected slippage.
-4. **Analyse.** Expected value and probability of profit come from a lognormal model whose volatility
-   blends implied and 30-day realized volatility. Premium selling only has an edge when IV is above the
-   volatility that actually shows up; this blend is where that edge enters the model. Candidates are ranked by EV per dollar risked.
+4. **Analyse.** Expected value and probability of profit come from a lognormal model of the price,
+   using a volatility that blends implied and 30-day realized volatility. Premium selling only has an
+   edge when IV is above the volatility that actually shows up; this blend is where that edge enters
+   the model. Each trade is valued at its **planned exit** (the strategy's close window), not at
+   expiry, with remaining options repriced at today's IV. Commissions and the bid/ask spread on both
+   entry and exit are subtracted. Candidates are ranked by EV per dollar risked.
 5. **Risk gate** and sizing, then **execute** as a single IBKR combo limit order. Unfilled orders are cancelled.
 6. **Snapshot** equity, open risk and P&L for the dashboard.
 
@@ -41,7 +56,7 @@ src/flick/
   models.py            contracts, quotes, legs, candidates, positions
   pricing.py           Black-Scholes, greeks, IV, probabilities, realized vol
   analysis.py          fill estimates, EV/POP integration, liquidity filters
-  strategies/          credit_spread.py, leaps_call.py
+  strategies/          credit_spread, iron_condor, iron_butterfly, calendar, leaps_call
   risk.py              never-naked check, risk gate, sizing
   manager.py           exit and assignment-avoidance rules
   engine.py            the cycle

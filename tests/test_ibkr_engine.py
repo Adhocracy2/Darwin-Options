@@ -146,10 +146,11 @@ def test_ibkr_cycle_opens_and_closes(ib_engine):
     assert out["opened"] and not out["reconcile"]
     bag, order = next((c, o) for c, o in fake.orders if c.secType == "BAG")
     assert order.action == "BUY" and order.lmtPrice < 0  # credit
-    assert [l.action for l in bag.comboLegs] == ["BUY", "SELL"]
+    actions = [l.action for l in bag.comboLegs]
+    assert actions == sorted(actions) and "SELL" in actions  # buys listed first
     assert uncovered_shorts({s: q for s, q in holdings_of(engine.store.positions("open")).items() if q}) == []
 
-    md.advance(30)  # inside the close window
+    md.advance(45)  # past every short leg's close window
     engine.cfg.allow_new_entries = False
     out = engine.run_once()
     assert out["exits"] and not out["reconcile"]

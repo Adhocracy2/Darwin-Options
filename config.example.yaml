@@ -31,6 +31,31 @@ credit_spread:
   min_credit_pct_of_width: 0.20
   min_otm_pct: 0.02
 
+iron_condor:
+  enabled: true
+  dte_min: 30
+  dte_max: 50
+  short_delta_min: 0.10
+  short_delta_max: 0.20
+  widths: [2, 5]                 # same width on both sides
+  min_credit_pct_of_width: 0.25
+
+iron_butterfly:
+  enabled: true
+  dte_min: 30
+  dte_max: 50
+  wing_widths: [5, 10]
+  min_credit_pct_of_width: 0.50
+
+calendar:
+  enabled: true
+  rights: [put, call]
+  front_dte_min: 25
+  front_dte_max: 40
+  back_gap_min: 21               # back month expires 21-63 days after the front
+  back_gap_max: 63
+  strikes_from_atm: 1
+
 leaps_call:
   # A deep-ITM SPY LEAPS costs ~$5-10k. With the default $500 trade cap only
   # cheaper underlyings will qualify; raise risk.max_loss_per_trade if you want these.
@@ -63,6 +88,11 @@ management:
   itm_buffer_pct: 0.005
   leaps_close_at_dte: 120
   leaps_stop_loss_pct: 0.40
+  debit_stop_loss_pct: 0.50      # debit trades (calendars)
+  # Per-strategy changes to any management setting; merged into the defaults.
+  overrides:
+    iron_butterfly: {take_profit_pct: 0.25, check_threatened: false}
+    calendar: {take_profit_pct: 0.25, close_at_dte: 5, check_threatened: false}
 
 execution:
   slippage_frac: 0.25

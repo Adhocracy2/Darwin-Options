@@ -42,3 +42,21 @@ def test_occ_roundtrip():
     assert sym == "SPY261120P00482500"
     c = OptionContract.from_occ(sym)
     assert (c.underlying, c.expiry, c.strike, c.right) == ("SPY", date(2026, 11, 20), 482.5, Right.PUT)
+
+
+def test_ev_counts_only_decay_until_planned_exit():
+    from flick.analysis import evaluate
+    from flick.models import Leg
+
+    today = date(2026, 10, 21)
+    exp = date(2026, 12, 4)  # 44 DTE
+    short = OptionContract.from_occ(OptionContract.occ("SPY", exp, Right.PUT, 480))
+    long = OptionContract.from_occ(OptionContract.occ("SPY", exp, Right.PUT, 475))
+    legs = [Leg(short, -1), Leg(long, 1)]
+    t = 44 / 365
+    credit = (pricing.bs_price(500, 480, t, 0.04, 0.22, Right.PUT)
+              - pricing.bs_price(500, 475, t, 0.04, 0.23, Right.PUT))
+    ivs = {short.symbol: 0.22, long.symbol: 0.23}
+    to_expiry, _ = evaluate(legs, credit, 500, today, 0.16, 0.04, ivs, exit_dte=0)
+    to_21, _ = evaluate(legs, credit, 500, today, 0.16, 0.04, ivs, exit_dte=21)
+    assert to_expiry > to_21 > 0  # closing early gives up some decay but keeps the vol edge

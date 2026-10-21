@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,42 @@ class CreditSpreadConfig:
     widths: list[float] = field(default_factory=lambda: [1.0, 2.0, 5.0])
     min_credit_pct_of_width: float = 0.20
     min_otm_pct: float = 0.02  # short strike must be at least this far out of the money
+
+
+@dataclass
+class IronCondorConfig:
+    """Short put spread + short call spread, same expiry and width. Max loss = width - credit."""
+    enabled: bool = True
+    dte_min: int = 30
+    dte_max: int = 50
+    short_delta_min: float = 0.10
+    short_delta_max: float = 0.20
+    widths: list[float] = field(default_factory=lambda: [2.0, 5.0])
+    min_credit_pct_of_width: float = 0.25
+    min_otm_pct: float = 0.02
+
+
+@dataclass
+class IronButterflyConfig:
+    """Short at-the-money put + call at one strike, long wings either side.
+    Max loss = wing width - credit."""
+    enabled: bool = True
+    dte_min: int = 30
+    dte_max: int = 50
+    wing_widths: list[float] = field(default_factory=lambda: [5.0, 10.0])
+    min_credit_pct_of_width: float = 0.50
+
+
+@dataclass
+class CalendarConfig:
+    """Sell a near-term option, buy a later one at the same strike. Max loss = debit paid."""
+    enabled: bool = True
+    rights: list[str] = field(default_factory=lambda: ["put", "call"])
+    front_dte_min: int = 25
+    front_dte_max: int = 40
+    back_gap_min: int = 21  # back expiry is this many days or more after the front
+    back_gap_max: int = 63
+    strikes_from_atm: int = 1  # also try this many strikes either side of the money
 
 
 @dataclass
@@ -63,6 +99,18 @@ class ManagementConfig:
     itm_buffer_pct: float = 0.005  # close when short strike is within this of spot (or ITM)
     leaps_close_at_dte: int = 120  # sell LEAPS before theta accelerates
     leaps_stop_loss_pct: float = 0.40  # close PMCC if down this much of the debit paid
+    debit_stop_loss_pct: float = 0.50  # debit trades (calendars): close if down this much of the debit
+    check_threatened: bool = True  # close when a short strike is at/near the money
+    # Per-strategy changes to any of the settings above. YAML entries are merged into these.
+    overrides: dict = field(default_factory=lambda: {
+        # Short strikes start at the money, so "threatened" doesn't apply; assignment is
+        # still guarded by the extrinsic-value and DTE checks.
+        "iron_butterfly": {"take_profit_pct": 0.25, "check_threatened": False},
+        "calendar": {"take_profit_pct": 0.25, "close_at_dte": 5, "check_threatened": False},
+    })
+
+    def for_strategy(self, name: str) -> "ManagementConfig":
+        return replace(self, **self.overrides.get(name, {}))
 
 
 @dataclass
@@ -97,6 +145,9 @@ class Config:
     allow_new_entries: bool = True
     max_new_trades_per_cycle: int = 2
     credit_spread: CreditSpreadConfig = field(default_factory=CreditSpreadConfig)
+    iron_condor: IronCondorConfig = field(default_factory=IronCondorConfig)
+    iron_butterfly: IronButterflyConfig = field(default_factory=IronButterflyConfig)
+    calendar: CalendarConfig = field(default_factory=CalendarConfig)
     leaps_call: LeapsCallConfig = field(default_factory=LeapsCallConfig)
     filters: FilterConfig = field(default_factory=FilterConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
@@ -124,7 +175,12 @@ def _build(cls: type, data: dict[str, Any] | None):
             continue
         current = getattr(obj, f.name)
         value = data[f.name]
-        setattr(obj, f.name, _build(type(current), value) if is_dataclass(current) else value)
+        if is_dataclass(current):
+            value = _build(type(current), value)
+        elif isinstance(current, dict) and isinstance(value, dict):  # merge, e.g. management.overrides
+            value = {**current, **{k: ({**current.get(k, {}), **v} if isinstance(v, dict) else v)
+                                   for k, v in value.items()}}
+        setattr(obj, f.name, value)
     return obj
 
 

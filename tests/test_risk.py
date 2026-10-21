@@ -99,3 +99,16 @@ def test_attach_refused_when_already_covered(cfg):
     pos = Position("leaps_call", "SPY", [leaps, short], max_loss=7_000, max_profit=0)
     c = cand([Leg(contract(535, Right.CALL), -1)], max_loss=0.0, attach_to=pos.id)
     assert not RiskGate(cfg).check(c, [pos], 1e5, 1e5, TODAY).approved
+
+
+def test_config_overrides_merge_from_yaml(tmp_path):
+    from flick.config import load_config
+
+    p = tmp_path / "c.yaml"
+    p.write_text("management:\n  overrides:\n    calendar: {close_at_dte: 7}\n    iron_condor: {take_profit_pct: 0.4}\n")
+    m = load_config(p).management
+    assert m.for_strategy("calendar").close_at_dte == 7
+    assert m.for_strategy("calendar").take_profit_pct == 0.25  # default kept
+    assert m.for_strategy("iron_condor").take_profit_pct == 0.4
+    assert m.for_strategy("iron_butterfly").check_threatened is False
+    assert m.for_strategy("credit_spread").close_at_dte == 21

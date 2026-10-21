@@ -29,14 +29,14 @@ class PositionManager:
 
     def _short_leg_risk(self, pos: Position, quotes: dict[str, OptionQuote], spot: float,
                         today: date) -> tuple[str, bool] | None:
-        m = self.cfg.management
+        m = self.cfg.management.for_strategy(pos.strategy)
         for leg in pos.open_legs:
             if leg.qty >= 0:
                 continue
             c = leg.contract
             if c.dte(today) <= 1:
                 return f"expiry: {c.symbol} expires in {c.dte(today)}d", True
-            if analysis.otm_pct(spot, c.strike, c.right) < m.itm_buffer_pct:
+            if m.check_threatened and analysis.otm_pct(spot, c.strike, c.right) < m.itm_buffer_pct:
                 return f"short strike threatened: {c.symbol} vs spot {spot:.2f}", True
             q = quotes.get(c.symbol)
             if q is not None:
@@ -54,7 +54,7 @@ class PositionManager:
         return self._defined_risk(pos, quotes, spot, today)
 
     def _defined_risk(self, pos: Position, quotes, spot, today) -> ExitAction | None:
-        m = self.cfg.management
+        m = self.cfg.management.for_strategy(pos.strategy)
         all_open = [l.symbol for l in pos.open_legs]
         if risk := self._short_leg_risk(pos, quotes, spot, today):
             return ExitAction(pos.id, all_open, risk[0], risk[1])
@@ -68,10 +68,15 @@ class PositionManager:
             return ExitAction(pos.id, all_open, f"take profit: {pnl:.0f} of {credit:.0f}")
         if credit > 0 and -pnl >= m.stop_loss_mult * credit:
             return ExitAction(pos.id, all_open, f"stop loss: {pnl:.0f}")
+        debit = -credit
+        if debit > 0 and pnl >= m.take_profit_pct * debit:
+            return ExitAction(pos.id, all_open, f"take profit: {pnl:.0f} on {debit:.0f} debit")
+        if debit > 0 and -pnl >= m.debit_stop_loss_pct * debit:
+            return ExitAction(pos.id, all_open, f"stop loss: {pnl:.0f} on {debit:.0f} debit")
         return None
 
     def _leaps_call(self, pos: Position, quotes, spot, today) -> ExitAction | None:
-        m = self.cfg.management
+        m = self.cfg.management.for_strategy(pos.strategy)
         open_legs = pos.open_legs
         all_open = [l.symbol for l in open_legs]
         shorts = [l for l in open_legs if l.qty < 0]
