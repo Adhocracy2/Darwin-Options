@@ -34,6 +34,10 @@ class RiskState:
     day_change_pct: float
     measured: dict
     size_multiplier: float = 1.0
+    per_trade_cap: float = 0.0  # dollars of max loss allowed per trade, all limits applied
+    pilot: bool = False
+    entries_left_today: int | None = None  # pilot: new trades still allowed today
+    capital_mode: bool = False  # equity is the trading capital + system P&L, not the account
     halted: bool = False
     reasons: list[str] = field(default_factory=list)  # why entries are paused or sizes reduced
     goals: list[dict] = field(default_factory=list)
@@ -80,7 +84,9 @@ def _ny_date(ts: str) -> str:
 
 
 def assess(r: RiskConfig, equity: float, snapshots: list[dict], closed: list[Position],
-           reset_ts: str | None = None, now: datetime | None = None) -> RiskState:
+           reset_ts: str | None = None, now: datetime | None = None, opened_today: int = 0) -> RiskState:
+    """`equity` and `snapshots` are whatever the system sizes against: the account, or the
+    trading capital plus the system's own P&L when `capital` is set."""
     stage = stage_for(r, equity)
     reasons: list[str] = []
     halted = False
@@ -93,7 +99,9 @@ def assess(r: RiskConfig, equity: float, snapshots: list[dict], closed: list[Pos
     measured = {"trades": n, "mean_return_on_risk": (sum(rors) / n) if n else None, "kelly": kelly,
                 "win_rate": (sum(x > 0 for x in rors) / n) if n else None}
     per_trade = stage["risk_per_trade_pct"]
-    if kelly is None:
+    if r.pilot:
+        pass  # pilot uses a hard dollar cap instead (below)
+    elif kelly is None:
         per_trade = min(per_trade, r.probation_risk_pct)
         reasons.append(f"probation: {n}/{r.min_trades_for_kelly} closed trades before sizing from your results")
     elif kelly <= 0:
@@ -128,10 +136,26 @@ def assess(r: RiskConfig, equity: float, snapshots: list[dict], closed: list[Pos
         goals.append({"target": g, "reached": equity >= g,
                       "progress": min(1.0, equity / g) if g else 1.0})
 
-    return RiskState(equity=equity, stage=stage, risk_per_trade_pct=per_trade * mult,
-                     max_portfolio_risk_pct=stage["max_portfolio_risk_pct"], max_positions=stage["max_positions"],
+    per_trade *= mult
+    cap = min(r.max_loss_per_trade, per_trade * equity)
+    max_positions, portfolio_pct, entries_left = stage["max_positions"], stage["max_portfolio_risk_pct"], None
+    if r.pilot:
+        # Hard dollar limits for the first live days. One trade may use up to the whole trading
+        # capital (a $1-wide spread risks ~$80), but only one position, one new trade a day.
+        cap = min(r.pilot_max_loss_per_trade * mult, r.max_loss_per_trade, equity)
+        per_trade = cap / equity if equity > 0 else 0.0
+        max_positions, portfolio_pct = r.pilot_max_positions, 1.0
+        entries_left = max(0, r.pilot_max_new_trades_per_day - opened_today)
+        reasons.insert(0, f"pilot mode: max ${cap:,.0f} at risk per trade, {r.pilot_max_positions} position(s), "
+                          f"{r.pilot_max_new_trades_per_day} new trade(s) a day, {', '.join(r.pilot_strategies)} only")
+        if entries_left == 0:
+            reasons.append("pilot: today's new-trade limit reached")
+
+    return RiskState(equity=equity, stage=stage, risk_per_trade_pct=per_trade,
+                     max_portfolio_risk_pct=portfolio_pct, max_positions=max_positions,
                      peak=peak, drawdown=dd, day_change_pct=day, measured=measured, size_multiplier=mult,
-                     halted=halted, reasons=reasons, goals=goals)
+                     per_trade_cap=cap, pilot=r.pilot, entries_left_today=entries_left,
+                     capital_mode=r.capital is not None, halted=halted, reasons=reasons, goals=goals)
 
 
 def group_of(r: RiskConfig, symbol: str) -> str:

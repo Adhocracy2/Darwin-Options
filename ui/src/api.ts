@@ -141,6 +141,7 @@ export type Review = {
     groups: Record<string, ReviewGroup[]>;
   }[];
   suggestions: { strategy: string; title: string; detail: string; setting: string | null; value: unknown }[];
+  execution?: { orders: number; avg_slippage_per_share: number; avg_slippage_pct_of_mid: number | null };
 };
 
 export type RiskState = {
@@ -161,6 +162,12 @@ export type RiskState = {
   open_positions: number;
   max_loss_per_trade: number;
   smallest_trade_max_loss: number | null;
+  per_trade_cap: number;
+  pilot: boolean;
+  entries_left_today: number | null;
+  capital_mode: boolean;
+  account_equity: number;
+  capital: number | null;
   limits: { drawdown_reduce_at: number; drawdown_halt_at: number; daily_loss_halt_pct: number; max_group_risk_pct: number };
 };
 

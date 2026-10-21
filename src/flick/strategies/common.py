@@ -31,4 +31,5 @@ def price_candidate(strategy: str, symbol: str, legs: list[Leg], quotes: dict[st
     return Candidate(strategy=strategy, underlying=symbol, legs=legs, net_credit=round(credit, 2),
                      max_loss=loss, max_profit=max_profit(credit), pop=pop, expected_value=ev,
                      score=ev / loss, spot=chain.spot,
+                     leg_spread_pct=max(quotes[l.contract.symbol].spread_pct for l in legs),
                      notes={"iv": vol_from.iv, "rv": chain.realized_vol, **(notes or {})})

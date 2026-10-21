@@ -14,12 +14,17 @@ export function RiskCard({ refreshKey, live }: { refreshKey: unknown; live: bool
     if (!confirm(`Reset the drawdown peak to today's equity (${usd(r.equity)})?${live ? " This is the LIVE account." : ""} New trades will resume if nothing else blocks them.`)) return;
     setR(await api.resetRisk());
   };
-  const perTrade = r.risk_per_trade_pct * r.equity;
+  const perTrade = r.per_trade_cap;
   const m = r.measured;
 
   return (
     <div className="card">
-      <h2>Growth plan &amp; risk</h2>
+      <h2>Growth plan &amp; risk {r.pilot && <span className="badge live">Pilot</span>}</h2>
+      {r.capital_mode && (
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Trading capital <b>{usd(r.equity)}</b> ({usd(r.capital)} allocated + system P&amp;L) of a {usd(r.account_equity)} account.
+          Sizing, drawdown and goals use the trading capital only.
+        </p>)}
       <div className="goals">
         {r.goals.map((g) => (
           <div key={g.target} className="goal">
@@ -29,11 +34,11 @@ export function RiskCard({ refreshKey, live }: { refreshKey: unknown; live: bool
           </div>))}
       </div>
 
-      {r.smallest_trade_max_loss != null && r.smallest_trade_max_loss > Math.min(perTrade, r.max_loss_per_trade) && (
+      {r.smallest_trade_max_loss != null && r.smallest_trade_max_loss > perTrade && (
         <div className="note small halted">
           <b>Account too small for the current limit. </b>
           The cheapest trade in the last scan risks {usd(r.smallest_trade_max_loss)} ({pct(r.smallest_trade_max_loss / r.equity)} of
-          equity), above the {usd(Math.min(perTrade, r.max_loss_per_trade))} allowed per trade, so nothing can open. Add funds,
+          equity), above the {usd(perTrade)} allowed per trade, so nothing can open. Add funds,
           or raise the per-trade limit knowing one loss would cost that share of the account.
         </div>)}
       <div className={`note small ${r.halted ? "halted" : ""}`} style={{ display: r.reasons.length ? "block" : "none" }}>
@@ -43,7 +48,9 @@ export function RiskCard({ refreshKey, live }: { refreshKey: unknown; live: bool
 
       <div className="tiles compact">
         <div className="tile"><div className="label">Risk per trade now</div><div className="value">{pct(r.risk_per_trade_pct)}</div>
-          <div className="muted small">{usd(Math.min(perTrade, r.max_loss_per_trade))} max loss · stage ceiling {pct(r.stage.risk_per_trade_pct)}</div></div>
+          <div className="muted small">{usd(perTrade)} max loss{r.pilot
+            ? ` · pilot · ${r.entries_left_today ?? 0} new trade(s) left today`
+            : ` · stage ceiling ${pct(r.stage.risk_per_trade_pct)}`}</div></div>
         <div className="tile"><div className="label">Open risk</div><div className="value">{usd(r.open_risk)}</div>
           <div className="muted small">limit {pct(r.max_portfolio_risk_pct)} = {usd(r.max_portfolio_risk_pct * r.equity)} · {r.open_positions}/{r.max_positions} positions</div></div>
         <div className="tile"><div className="label">Drawdown</div><div className="value">{pct(r.drawdown)}</div>
@@ -54,10 +61,15 @@ export function RiskCard({ refreshKey, live }: { refreshKey: unknown; live: bool
           <div className="value">{m.mean_return_on_risk == null ? "–" : `${m.mean_return_on_risk >= 0 ? "+" : ""}${pct(m.mean_return_on_risk)}`}</div>
           <div className="muted small">{m.trades} trades{m.kelly != null ? ` · Kelly ${pct(m.kelly)}, using half` : " · sizing from results after 30"}</div></div>
       </div>
-      <p className="muted small" style={{ margin: 0 }}>
+      {r.pilot ? (
+        <p className="muted small" style={{ margin: 0 }}>
+          Pilot: one trade may use up to the whole trading capital, but only one position and one new trade a day.
+          A full loss trips the drawdown brake and pauses trading until you reset it here.
+        </p>
+      ) : <p className="muted small" style={{ margin: 0 }}>
         Stage: accounts from {usd(r.stage.min_equity)}. Limits tighten as the account grows. Trade size is the smaller of the stage ceiling
         and half the Kelly bet from your own results; {r.size_multiplier < 1 ? "currently halved by the drawdown brake." : "underlyings that move together share one budget."}
-      </p>
+      </p>}
     </div>
   );
 }

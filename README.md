@@ -142,6 +142,24 @@ Every new trade passes these, in addition to the never-naked check:
 The Overview tab's **Growth plan & risk** card shows progress to your goals, the current limits,
 drawdown, today's change, measured edge and why trades are paused, if they are.
 
+**Trading capital** (`risk.capital`): fund the account with $2,000 (IBKR's margin minimum for
+spreads) but let the system use only, say, $500. Sizing, drawdown and goals are then measured on
+that $500 plus the system's own profit and loss, never on the whole account.
+
+**Pilot mode** (`risk.pilot`) for the first live days: one position at a time, one new trade a
+day, credit spreads only, at most `pilot_max_loss_per_trade` dollars at risk ($500 by default),
+and every leg's bid/ask within 10% of its mid. Drawdown and daily-loss brakes still apply,
+measured on the trading capital: one full loss on a small allocation pauses trading until you
+review it and reset.
+
+**Why not $100?** Commissions are about $0.65 per contract, so $2.60 to open and close a
+two-leg spread. A $1-wide spread (max loss ~$85) collects about $15–20, so commissions take
+15–20% of the credit and the model finds no edge. A $5-wide spread (max loss ~$450) gets close to
+break-even or better when options are rich. The smallest sensible pilot is one $5-wide spread.
+
+Every fill records the mid price at order time, the limit and the fill, so the trade review
+shows how much slippage real liquidity is costing.
+
 Note: IBKR needs a margin account with at least **$2,000** for spreads, so a smaller account
 can't trade them live. The system will also refuse trades whose max loss exceeds the per-trade limit.
 
@@ -155,6 +173,16 @@ Connects to your paper account, reads equity, pulls a price and an option chain,
 real credit-spread combo order priced so far from the market it can't fill, confirms IBKR
 accepted it, and cancels it. Each step prints PASS or FAIL with IBKR's own message. It refuses to
 run in live mode.
+
+### Rolling
+
+When a credit spread hits its time exit or its short strike is threatened, the system first tries
+to **roll** it: one combo order that closes the current spread and opens the same width in a later
+expiry, at the same strike or further from the money. The roll happens only if it collects at
+least `min_net_credit`, the new spread has positive expected value, it passes the full risk gate
+at the same size, and the position hasn't been rolled `max_rolls` times. Otherwise it closes as
+before. Stop losses and profit targets are never rolled. Rolls are logged in the Journal, and the
+old position closes with reason "rolled", so the review can tell whether rolling is paying off.
 
 ### Trade review
 

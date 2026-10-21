@@ -114,6 +114,20 @@ class RiskConfig:
     max_group_risk_pct: float = 0.30
     goals: list = field(default_factory=lambda: [1_000, 10_000])
 
+    # Trading capital: how much of the account the system may use. Sizing, drawdown and goals
+    # are measured on this plus the system's own P&L, never the whole account. None = whole account.
+    capital: float | None = None
+
+    # Pilot mode for the first live days: hard dollar limits that replace the % limits above.
+    pilot: bool = False
+    # Dollars at risk per trade. $500 fits one $5-wide spread; narrower spreads mostly lose to
+    # commissions (~$2.60 a round trip on 2 legs) and bid/ask, so the model rejects them anyway.
+    pilot_max_loss_per_trade: float = 500.0
+    pilot_max_positions: int = 1
+    pilot_max_new_trades_per_day: int = 1
+    pilot_strategies: list = field(default_factory=lambda: ["credit_spread"])
+    pilot_max_leg_spread_pct: float = 0.10  # each leg's bid/ask must be within 10% of its mid
+
 
 @dataclass
 class ManagementConfig:
@@ -136,6 +150,18 @@ class ManagementConfig:
 
     def for_strategy(self, name: str) -> "ManagementConfig":
         return replace(self, **self.overrides.get(name, {}))
+
+
+@dataclass
+class RollingConfig:
+    """Roll a credit spread out in time (and same or further from the money) instead of closing it,
+    but only when the roll is paid for, passes the risk gate, and the model expects it to make money.
+    Never on a stop loss: rolling losers is how small losses become big ones."""
+    enabled: bool = True
+    strategies: list = field(default_factory=lambda: ["credit_spread"])
+    on_reasons: list = field(default_factory=lambda: ["dte exit", "short strike threatened"])
+    min_net_credit: float = 0.05  # per share: the roll must collect at least this
+    max_rolls: int = 2  # per position chain
 
 
 @dataclass
@@ -179,6 +205,7 @@ class Config:
     management: ManagementConfig = field(default_factory=ManagementConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     ibkr: IBKRConfig = field(default_factory=IBKRConfig)
+    rolling: RollingConfig = field(default_factory=RollingConfig)
 
     def validate(self) -> None:
         if self.mode not in {"sim", "paper", "live"}:

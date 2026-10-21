@@ -103,3 +103,63 @@ def test_risk_api_and_reset(engine):
     assert r["smallest_trade_max_loss"] > 0 and "probation" in r["reasons"][0]
     after = client.post("/api/risk/reset").json()
     assert after["drawdown"] == 0 and any(e["kind"] == "risk" for e in client.get("/api/events").json())
+
+
+# ---- trading capital and pilot mode ----------------------------------------------
+
+def pilot_engine(engine, capital=500.0):
+    r = engine.cfg.risk
+    r.capital, r.pilot = capital, True
+    engine.cfg.universe = ["IWM"]  # $1 strikes
+    engine.cfg.credit_spread.widths = [1.0, 5.0]
+    engine.cfg.iron_condor.enabled = True
+    return engine
+
+
+def test_capital_caps_sizing_at_allocation(engine):
+    engine.cfg.risk.capital = 500.0
+    s = engine.risk_state(25_000)
+    assert s.equity == 500 and s.capital_mode
+
+
+def test_pilot_trades_one_small_spread_only(engine, md):
+    pilot_engine(engine)
+    # Rich options and tight markets, so a $1-wide spread clears commissions (~$2.60 round trip)
+    md.half_spread_pct, md.base_iv, md.realized = 0.02, 0.25, 0.15
+    out = engine.run_once()
+    opened = engine.store.positions("open")
+    assert len(out["opened"]) == 1 and len(opened) == 1
+    p = opened[0]
+    assert p.strategy == "credit_spread" and p.max_loss <= 500
+    assert "fill_quality" in p.entry_notes and p.entry_notes["fill_quality"]["slippage"] is not None
+    rows = engine.store.latest_scan()["candidates"]
+    assert any("pilot: iron_condor not allowed yet" in " ".join(r["reasons"]) for r in rows)
+    # second cycle the same day: one position max, one new trade a day
+    assert engine.run_once()["opened"] == []
+    s = engine.risk_state(25_000)
+    assert s.entries_left_today == 0 and s.per_trade_cap <= 500
+
+
+def test_pilot_rejects_illiquid_legs(engine, md):
+    pilot_engine(engine)
+    md.half_spread_pct = 0.06  # 12% wide: passes the scanner's 15% filter, fails the pilot's 10%
+    engine.run_once()
+    assert engine.store.positions("open") == []
+    rows = engine.store.latest_scan()["candidates"]
+    assert any("bid/ask" in " ".join(r["reasons"]) for r in rows)
+
+
+def test_one_full_loss_on_small_capital_pauses_trading(cfg):
+    cfg.risk.capital, cfg.risk.pilot = 100.0, True
+    # equity series: capital 100, then down 80 after one max loss
+    snaps = [{"ts": "2026-10-19T15:00:00+00:00", "equity": 100}, {"ts": "2026-10-20T15:00:00+00:00", "equity": 20}]
+    s = assess(cfg.risk, 20, snaps, [], now=NOW)
+    assert s.halted and any("drawdown" in x for x in s.reasons)
+
+
+def test_one_dollar_spreads_lose_to_commissions(engine, md):
+    """With ~$2.60 round-trip commissions, a $1-wide spread (~$15-20 credit) has no edge; the gate refuses it."""
+    pilot_engine(engine, capital=100.0)
+    md.half_spread_pct, md.base_iv, md.realized = 0.02, 0.25, 0.15
+    engine.run_once()
+    assert engine.store.positions("open") == []

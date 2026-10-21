@@ -182,6 +182,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         state["open_risk"] = sum(p.max_loss for p in positions)
         state["open_positions"] = len(positions)
         state["max_loss_per_trade"] = cfg.risk.max_loss_per_trade
+        state["account_equity"] = acct.equity
+        state["capital"] = cfg.risk.capital
         losses = [c["max_loss"] for c in engine.store.latest_scan()["candidates"]
                   if not c.get("attach_to") and c.get("max_loss", 0) > 0]
         state["smallest_trade_max_loss"] = min(losses) if losses else None

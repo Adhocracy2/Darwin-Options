@@ -116,6 +116,7 @@ class Candidate:
     spot: float
     attach_to: str | None = None  # existing position id (e.g. selling a call against held LEAPS)
     notes: dict = field(default_factory=dict)
+    leg_spread_pct: float = 0.0  # widest leg bid/ask as a share of its mid (liquidity)
 
     def describe(self) -> str:
         legs = " / ".join(

@@ -19,6 +19,12 @@ export function ReviewCard() {
         suggested when a group has {r.min_trades_per_group}+ trades and the difference is bigger than chance.
       </p>
       {r.note && <p className="small note">{r.note}</p>}
+      {r.execution && (
+        <p className="small">
+          <b>Fill quality:</b> {r.execution.orders} orders filled on average{" "}
+          <b>${Math.abs(r.execution.avg_slippage_per_share).toFixed(3)}/share {r.execution.avg_slippage_per_share >= 0 ? "worse" : "better"}</b>{" "}
+          than the mid price{r.execution.avg_slippage_pct_of_mid != null && ` (${pct(Math.abs(r.execution.avg_slippage_pct_of_mid))} of the mid credit)`}.
+        </p>)}
       <h3 className="small">Suggested changes</h3>
       {r.suggestions.length === 0 ? <p className="muted small">None yet.</p> : (
         <ul className="suggestions">{r.suggestions.map((s, i) => (

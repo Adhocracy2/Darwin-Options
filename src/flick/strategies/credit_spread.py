@@ -48,6 +48,7 @@ class CreditSpread:
                             strategy=self.name, underlying=symbol, legs=legs, net_credit=round(credit, 2),
                             max_loss=max_loss, max_profit=credit * MULTIPLIER, pop=pop,
                             expected_value=ev, score=ev / max_loss, spot=chain.spot,
+                            leg_spread_pct=max(short.spread_pct, long.spread_pct),
                             notes={"side": side, "width": width, "short_delta": short.delta,
                                    "iv": short.iv, "rv": chain.realized_vol, "dte": short.contract.dte(ctx.today)}))
         return out

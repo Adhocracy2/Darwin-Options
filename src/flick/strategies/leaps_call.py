@@ -60,6 +60,7 @@ class LeapsCall:
                     strategy=self.name, underlying=symbol, legs=legs, net_credit=round(credit, 2),
                     max_loss=0.0, max_profit=credit * MULTIPLIER, pop=pop, expected_value=ev,
                     score=ev / max(pos.max_loss / leaps.qty, 1.0), spot=spot, attach_to=pos.id,
+                    leg_spread_pct=s.spread_pct,
                     notes={"type": "attach", "short_delta": s.delta, "leaps": leaps.symbol}))
         if held:
             return out
@@ -92,6 +93,7 @@ class LeapsCall:
                 max_loss=max_loss,
                 max_profit=(s.contract.strike - leaps.contract.strike - debit) * MULTIPLIER,
                 pop=pop, expected_value=ev, score=ev / max_loss, spot=spot,
+                leg_spread_pct=max(leaps.spread_pct, s.spread_pct),
                 notes={"type": "open", "leaps_delta": leaps.delta, "short_delta": s.delta,
                        "leaps_dte": leaps.contract.dte(ctx.today)}))
         return out

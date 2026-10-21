@@ -181,6 +181,25 @@ def review(positions: list[Position]) -> dict:
                                               f"{strat}.short_delta_max", 0.16, {"share": round(hit_loss / losses, 3)}))
         report["strategies"].append(section)
 
+    # Execution quality: how far fills landed from the mid price at order time.
+    fq = [p.entry_notes["fill_quality"] for p in positions
+          if (p.entry_notes or {}).get("fill_quality", {}).get("slippage") is not None]
+    if fq:
+        slip = [f["slippage"] for f in fq]
+        mids = [abs(f["mid"]) for f in fq if f.get("mid")]
+        report["execution"] = {
+            "orders": len(fq),
+            "avg_slippage_per_share": round(sum(slip) / len(slip), 4),
+            "avg_slippage_pct_of_mid": round(sum(slip) / sum(mids), 4) if mids and sum(mids) else None,
+        }
+        avg_pct = report["execution"]["avg_slippage_pct_of_mid"]
+        if len(fq) >= 10 and avg_pct is not None and avg_pct > 0.10:
+            suggestions.append(Suggestion(
+                "all", "Fills are costing too much",
+                f"Fills average {avg_pct:.0%} worse than the mid price. Trade only the most liquid "
+                f"underlyings and widths, or tighten the bid/ask filter.",
+                "filters.max_leg_spread_pct", 0.10, report["execution"]))
+
     if len(closed) < MIN_TRADES:
         report["note"] = (f"Only {len(closed)} closed trades. Groups need {MIN_TRADES}+ trades before the review "
                           f"suggests changes; until then, treat the tables as anecdotes.")

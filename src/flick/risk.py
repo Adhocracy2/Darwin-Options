@@ -96,16 +96,26 @@ class RiskGate:
                 reasons.append(f"max open positions ({max_positions}) reached")
             if sum(p.underlying == c.underlying for p in positions) >= r.max_positions_per_underlying:
                 reasons.append(f"max positions on {c.underlying} reached")
-            cap = min(r.max_loss_per_trade, per_trade_pct * equity)
+            cap = state.per_trade_cap if state else min(r.max_loss_per_trade, per_trade_pct * equity)
+            if state and state.pilot:
+                if c.strategy not in r.pilot_strategies:
+                    reasons.append(f"pilot: {c.strategy} not allowed yet")
+                if c.leg_spread_pct > r.pilot_max_leg_spread_pct:
+                    reasons.append(f"pilot: a leg's bid/ask is {c.leg_spread_pct:.0%} of mid "
+                                   f"(max {r.pilot_max_leg_spread_pct:.0%})")
+                if state.entries_left_today == 0:
+                    reasons.append("pilot: today's new-trade limit reached")
             open_risk = sum(p.max_loss for p in positions)
             room = portfolio_pct * equity - open_risk
             group = group_of(r, c.underlying)
             group_risk = sum(p.max_loss for p in positions if group_of(r, p.underlying) == group)
-            group_room = r.max_group_risk_pct * equity - group_risk
+            # Pilot holds one position at a time, so the diversification cap doesn't apply.
+            group_pct = 1.0 if state and state.pilot else r.max_group_risk_pct
+            group_room = group_pct * equity - group_risk
             qty = int(min(cap, room, group_room, buying_power) // c.max_loss)
             if qty < 1:
                 reasons.append(f"max loss ${c.max_loss:.0f}/unit exceeds limits (trade cap ${cap:.0f} = "
-                               f"{per_trade_pct:.1%} of equity, portfolio room ${room:.0f}, "
+                               f"{cap / equity if equity else 0:.1%} of equity, portfolio room ${room:.0f}, "
                                f"{group} room ${group_room:.0f}, BP ${buying_power:.0f})")
 
         if qty >= 1:

@@ -104,3 +104,16 @@ def test_config_broker_selection(monkeypatch):
     monkeypatch.delenv("FLICK_ALLOW_LIVE", raising=False)
     with pytest.raises(RuntimeError):
         Config(mode="live").validate()
+
+
+def test_roll_is_one_four_leg_combo_buys_first():
+    from datetime import date as d
+    later = d(2026, 12, 18)
+    def c2(k, exp):
+        return OptionContract.from_occ(OptionContract.occ("SPY", exp, Right.PUT, k))
+    legs = [Leg(c(480), 1), Leg(c(475), -1), Leg(c2(470, later), -1), Leg(c2(465, later), 1)]  # close old, open new
+    contracts = {l.contract.symbol: ib(l.contract.strike, i + 1) for i, l in enumerate(legs)}
+    intent = OrderIntent(legs, 2, 0.35, opening=True)
+    contract, order = build_order(intent, contracts, "SPY")
+    assert len(contract.comboLegs) == 4 and [l.action for l in contract.comboLegs] == ["BUY", "BUY", "SELL", "SELL"]
+    assert order.action == "BUY" and order.lmtPrice == -0.35 and order.totalQuantity == 2

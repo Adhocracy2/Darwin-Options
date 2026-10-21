@@ -95,6 +95,23 @@ risk:
     US equity index: [SPY, QQQ, IWM, DIA]
   max_group_risk_pct: 0.30
   goals: [1000, 10000]
+  # Use only part of the account. Sizing, drawdown and goals are measured on this plus the
+  # system's own P&L. Leave unset to use the whole account.
+  capital: 500
+  # Pilot mode for the first live days: hard dollar limits replace the % limits.
+  pilot: true
+  pilot_max_loss_per_trade: 500   # one $5-wide spread; $1-wide spreads lose to commissions
+  pilot_max_positions: 1
+  pilot_max_new_trades_per_day: 1
+  pilot_strategies: [credit_spread]
+  pilot_max_leg_spread_pct: 0.10
+
+rolling:                         # roll credit spreads instead of closing, only when it pays
+  enabled: true
+  strategies: [credit_spread]
+  on_reasons: ["dte exit", "short strike threatened"]   # never on stop losses
+  min_net_credit: 0.05           # per share
+  max_rolls: 2
 
 management:
   take_profit_pct: 0.50

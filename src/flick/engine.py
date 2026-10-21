@@ -15,6 +15,7 @@ from .data.base import MarketData, ScanCache
 from .manager import ExitAction, PositionManager
 from .models import Candidate, Fill, Leg, OptionContract, OrderIntent, Position, PositionLeg
 from .portfolio import RiskState, assess
+from .roller import find_roll, roll_count
 from .risk import RiskGate, assert_never_naked, holdings_of
 from .store import Store
 from .strategies.base import StrategyContext
@@ -111,6 +112,7 @@ class Engine:
     def open_candidate(self, c: Candidate, qty: int) -> Position | None:
         self._assert_safe_after({l.contract.symbol: l.ratio * qty for l in c.legs})
         intent = OrderIntent(c.legs, qty, c.net_credit, opening=True, tag=c.strategy)
+        mid = self._mid_credit(c.legs)
         fill = self.broker.submit(intent)
         if fill is None:
             self.store.event("no_fill", f"open not filled: {c.describe()} @ {c.net_credit:.2f}")
@@ -124,11 +126,25 @@ class Engine:
         else:
             pos = Position(c.strategy, c.underlying, new_legs, max_loss=c.max_loss * fill.qty,
                            max_profit=c.max_profit * fill.qty, commissions=fill.commission,
-                           entry_notes=candidate_row(c))
+                           entry_notes=candidate_row(c) | {"fill_quality": self._fill_quality(mid, c.net_credit, fill, c.legs)})
         self.store.save_position(pos)
         self.store.event("open", f"{c.describe()} x{fill.qty} @ {fill.net_credit(c.legs):.2f}", pos.id,
                          {"fill": asdict(fill)})
         return pos
+
+    def _mid_credit(self, legs: list[Leg]) -> float | None:
+        try:
+            q = self.md.quotes([l.contract.symbol for l in legs])
+            return -sum(l.ratio * q[l.contract.symbol].mid for l in legs)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _fill_quality(mid: float | None, limit: float, fill: Fill, legs: list[Leg]) -> dict:
+        """Per share: what the market's mid offered, what we asked, what we got. Slippage > 0 = worse than mid."""
+        got = fill.net_credit(legs)
+        return {"mid": None if mid is None else round(mid, 3), "limit": round(limit, 3), "fill": round(got, 3),
+                "slippage": None if mid is None else round(mid - got, 3)}
 
     def close_legs(self, pos: Position, action: ExitAction) -> bool:
         legs = [l for l in pos.open_legs if l.symbol in action.symbols]
@@ -179,12 +195,57 @@ class Engine:
             try:
                 quotes = self.md.quotes([l.symbol for l in pos.open_legs])
                 action = self.manager.evaluate(pos, quotes, self.md.spot(pos.underlying), today)
-                if action and self.close_legs(pos, action):
+                if action and (self.try_roll(pos, action) or self.close_legs(pos, action)):
                     done.append(action)
             except Exception as e:
                 log.exception("manage %s failed", pos.id)
                 self.store.event("error", f"manage {pos.id}: {e}", pos.id)
         return done
+
+    def try_roll(self, pos: Position, action: ExitAction) -> bool:
+        """Roll instead of closing when it's paid for and passes every check (see roller.py)."""
+        rc = self.cfg.rolling
+        if (not rc.enabled or not self.cfg.allow_new_entries or pos.strategy not in rc.strategies
+                or action.reason.split(":")[0] not in rc.on_reasons
+                or set(action.symbols) != {l.symbol for l in pos.open_legs}):
+            return False
+        acct = self.broker.account()
+        state = self.risk_state(acct.equity)
+        positions = self.store.positions("open")
+        ctx = StrategyContext(self.cfg, ScanCache(self.md), positions, self.md.today())
+        roll, why = find_roll(pos, action.reason, ctx, self.gate, positions, acct.buying_power, state)
+        if roll is None:
+            self.store.event("roll_skipped", f"not rolled ({why}); closing instead", pos.id)
+            return False
+        old_legs = pos.open_legs
+        changes = {l.symbol: -l.qty for l in old_legs}
+        for l in roll.new.legs:
+            changes[l.contract.symbol] = changes.get(l.contract.symbol, 0) + l.ratio * roll.qty
+        self._assert_safe_after(changes)
+        mid = self._mid_credit(roll.legs)
+        fill = self.broker.submit(OrderIntent(roll.legs, roll.qty, roll.net_credit, opening=True, tag="roll"))
+        if fill is None:
+            self.store.event("no_fill", f"roll not filled @ {roll.net_credit:+.2f}; closing instead", pos.id)
+            return False
+        half = Fill(fill.qty, fill.leg_prices, fill.commission / 2, fill.broker_order_id)
+        self._apply_close(pos, old_legs, half, roll.qty)
+        from .store import now
+        if not pos.open_legs:
+            pos.status, pos.closed_at, pos.exit_reason = "closed", now(), f"rolled: {action.reason}"
+        self.store.save_position(pos)
+        new_legs = [PositionLeg(l.contract.symbol, l.ratio * fill.qty, fill.leg_prices[l.contract.symbol])
+                    for l in roll.new.legs]
+        new = Position(roll.new.strategy, pos.underlying, new_legs, max_loss=roll.new.max_loss * fill.qty,
+                       max_profit=roll.new.max_profit * fill.qty, commissions=half.commission,
+                       entry_notes=candidate_row(roll.new) | {
+                           "rolled_from": pos.id, "roll_count": roll_count(pos) + 1,
+                           "roll_net_credit": roll.net_credit,
+                           "fill_quality": self._fill_quality(mid, roll.net_credit, fill, roll.legs)})
+        self.store.save_position(new)
+        self.store.event("roll", f"{pos.underlying} rolled ({action.reason.split(':')[0]}) to "
+                                 f"{roll.new.describe()} for {fill.net_credit(roll.legs):+.2f} net x{fill.qty}",
+                         new.id, {"from": pos.id, "fill": asdict(fill), "realized_on_old": pos.realized_pnl()})
+        return True
 
     def reconcile(self) -> list[str]:
         if self.broker.name == "sim":
@@ -206,10 +267,45 @@ class Engine:
         unreal = sum(p.unrealized_pnl(marks) for p in open_pos if all(l.symbol in marks for l in p.open_legs))
         self.store.snapshot(acct.equity, sum(p.max_loss for p in open_pos), realized, unreal)
 
-    def risk_state(self, equity: float) -> RiskState:
+    def sizing_equity(self, account_equity: float) -> float:
+        """What the system sizes against: the account, or (with `risk.capital`) the trading
+        capital plus the system's own P&L, never more than the account holds."""
+        cap = self.cfg.risk.capital
+        if cap is None:
+            return account_equity
+        positions = self.store.positions(None)
+        realized = sum(p.realized_pnl() for p in positions)
+        open_pos = [p for p in positions if p.status == "open"]
+        unrealized = 0.0
+        if open_pos:
+            try:
+                marks = {s: q.mid for s, q in self.md.quotes([l.symbol for p in open_pos for l in p.open_legs]).items()}
+                unrealized = sum(p.unrealized_pnl(marks) for p in open_pos if all(l.symbol in marks for l in p.open_legs))
+            except Exception:
+                snaps = self.store.snapshots(1)
+                unrealized = snaps[-1]["unrealized"] if snaps else 0.0
+        return min(account_equity, cap + realized + unrealized)
+
+    def _equity_series(self) -> list[dict]:
+        snaps = self.store.snapshots()
+        cap = self.cfg.risk.capital
+        if cap is None:
+            return snaps
+        return [{"ts": s["ts"], "equity": cap + (s["realized"] or 0) + (s["unrealized"] or 0)} for s in snaps]
+
+    def opened_today(self) -> int:
+        """New positions opened today (New York date); rolls don't count."""
+        from .portfolio import _ny_date
+        from .broker.base import NY
+        from datetime import datetime
+        today = datetime.now(NY).date().isoformat()
+        return sum(1 for p in self.store.positions(None)
+                   if _ny_date(p.opened_at) == today and not (p.entry_notes or {}).get("rolled_from"))
+
+    def risk_state(self, account_equity: float) -> RiskState:
         reset, _ = self.store.get_setting(RISK_RESET_KEY)
-        return assess(self.cfg.risk, equity, self.store.snapshots(), self.store.positions("closed"),
-                      reset.get("ts"))
+        return assess(self.cfg.risk, self.sizing_equity(account_equity), self._equity_series(),
+                      self.store.positions("closed"), reset.get("ts"), opened_today=self.opened_today())
 
     def reset_drawdown(self) -> None:
         """Start measuring drawdown from now (lifts a drawdown halt). Logged in the journal."""
@@ -225,7 +321,7 @@ class Engine:
         positions = self.store.positions("open")
         state = self.risk_state(acct.equity)
         for c in self.scan():
-            decision = self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today(), state)
+            decision = self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state)
             if decision.approved and (c.underlying in touched or len(opened) >= self.cfg.max_new_trades_per_cycle):
                 decision.approved, decision.reasons = False, ["cycle limit / already traded this underlying"]
             rows.append(candidate_row(c, decision))
@@ -251,7 +347,7 @@ class Engine:
         acct = self.broker.account()
         positions = self.store.positions("open")
         state = self.risk_state(acct.equity)
-        rows = [candidate_row(c, self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today(), state))
+        rows = [candidate_row(c, self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state))
                 for c in self.scan()]
         self.store.save_scan(trim_scan(rows))
         return rows
