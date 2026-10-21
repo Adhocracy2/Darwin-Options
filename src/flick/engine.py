@@ -38,6 +38,18 @@ def candidate_row(c: Candidate, decision=None) -> dict:
     }
 
 
+def trim_scan(rows: list[dict], top: int = 150, per_strategy: int = 10) -> list[dict]:
+    """Rows to keep for the dashboard: the best overall plus the best few of every strategy,
+    so a strategy that ranks low still shows up (e.g. in its payoff diagram). Order is kept."""
+    keep = set(range(min(top, len(rows))))
+    seen: dict[str, int] = {}
+    for i, r in enumerate(rows):
+        if seen.get(r["strategy"], 0) < per_strategy:
+            keep.add(i)
+            seen[r["strategy"]] = seen.get(r["strategy"], 0) + 1
+    return [r for i, r in enumerate(rows) if i in keep]
+
+
 class Engine:
     def __init__(self, cfg: Config, md: MarketData, broker: Broker, store: Store):
         self.cfg, self.md, self.broker, self.store = cfg, md, broker, store
@@ -214,7 +226,7 @@ class Engine:
                     touched.add(c.underlying)
                     acct = self.broker.account()
                     positions = self.store.positions("open")
-        self.store.save_scan(rows[:200])
+        self.store.save_scan(trim_scan(rows))
         return opened
 
     def preview(self) -> list[dict]:
@@ -224,7 +236,7 @@ class Engine:
         positions = self.store.positions("open")
         rows = [candidate_row(c, self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today()))
                 for c in self.scan()]
-        self.store.save_scan(rows[:200])
+        self.store.save_scan(trim_scan(rows))
         return rows
 
     def run_once(self, force: bool = False) -> dict:

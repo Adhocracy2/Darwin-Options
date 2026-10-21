@@ -70,7 +70,7 @@ def evaluate(legs: list[Leg], net_credit: float, spot: float, today: date, sigma
             if rem <= 0:
                 v = c.intrinsic(s_t)
             else:
-                v = pricing.bs_price(s_t, c.strike, rem, r, leg_ivs.get(c.symbol, sigma), c.right)
+                v = pricing.american_floor_price(s_t, c.strike, rem, r, leg_ivs.get(c.symbol, sigma), c.right)
             value += l.ratio * v
         pnl = (net_credit + value) * MULTIPLIER
         ev += w * pnl

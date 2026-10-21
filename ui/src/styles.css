@@ -7,6 +7,7 @@
   --text-secondary: #52514e;
   --text-muted: #7a7974;
   --series-1: #2a78d6;
+  --series-2: #eb6834;
   --grid: #ebeae6;
   --good: #0ca30c;
   --critical: #d03b3b;
@@ -23,6 +24,7 @@
     --text-secondary: #c3c2b7;
     --text-muted: #8f8e87;
     --series-1: #3987e5;
+    --series-2: #d95926;
     --grid: #262624;
     --accent: #3987e5;
   }
@@ -36,6 +38,7 @@
   --text-secondary: #c3c2b7;
   --text-muted: #8f8e87;
   --series-1: #3987e5;
+  --series-2: #d95926;
   --grid: #262624;
   --accent: #3987e5;
 }
@@ -111,3 +114,18 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); fon
 .savebar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; justify-content: flex-end; align-items: center; padding: 12px 16px; background: var(--surface-1); border-top: 1px solid var(--border); box-shadow: 0 -2px 10px rgb(0 0 0 / .08); z-index: 10; }
 .savebar span { margin-right: auto; max-width: 1168px; }
 code { font-size: 12px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+/* ---- payoff diagrams ---- */
+.payoff { margin-top: 12px; }
+.payoff-stats { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+.payoff-stats b { color: var(--text-primary); font-weight: 600; }
+.payoff-stats b.pos { color: var(--good); }
+.payoff-stats b.neg { color: var(--critical); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--text-secondary); margin-bottom: 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.payoff-source { margin: 8px 0 0; }
+tr.expand > td { background: var(--bg); }
+button.icon { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+button.icon[aria-expanded="true"] { background: var(--surface-1); color: var(--text-primary); }
+.payoff-details { margin-top: 10px; }
+.payoff-details summary { cursor: pointer; color: var(--text-secondary); }

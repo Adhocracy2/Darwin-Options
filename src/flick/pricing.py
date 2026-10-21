@@ -32,6 +32,14 @@ def bs_price(s: float, k: float, t: float, r: float, sigma: float, right: Right)
     return k * math.exp(-r * t) * norm_cdf(-d2) - s * norm_cdf(-d1)
 
 
+def american_floor_price(s: float, k: float, t: float, r: float, sigma: float, right: Right) -> float:
+    """Black-Scholes, but never below intrinsic value. US equity options are American and can be
+    exercised, so they don't trade below intrinsic; plain European pricing undervalues deep
+    in-the-money puts. This matters for calendars and other legs valued before their expiry."""
+    intrinsic = max(0.0, s - k) if right is Right.CALL else max(0.0, k - s)
+    return max(bs_price(s, k, t, r, sigma, right), intrinsic)
+
+
 def greeks(s: float, k: float, t: float, r: float, sigma: float, right: Right) -> dict[str, float]:
     if t <= 0 or sigma <= 0:
         itm = (s > k) if right is Right.CALL else (s < k)

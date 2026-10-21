@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FieldMeta, Settings, SettingsUpdate } from "../api";
+import type { FieldMeta, Settings, SettingsUpdate, StrategyPayoff } from "../api";
+import { PayoffChart } from "./PayoffChart";
 import { api } from "../api";
 
 /** Local edit state. Numbers are kept as the text typed, in display units (e.g. "50" for 50%). */
@@ -70,6 +71,7 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [payoffs, setPayoffs] = useState<Record<string, StrategyPayoff>>({});
   const [showHelp, setShowHelp] = useState<boolean>(() => {
     try { return localStorage.getItem("flick.showHelp") === "1"; } catch { return false; }
   });
@@ -77,6 +79,13 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
     setShowHelp(v);
     try { localStorage.setItem("flick.showHelp", v ? "1" : "0"); } catch { /* storage unavailable */ }
   };
+
+  // Diagrams are fetched separately so the settings form never waits on market data.
+  useEffect(() => {
+    api.strategyPayoffs()
+      .then((list) => setPayoffs(Object.fromEntries(list.map((x) => [x.name, x]))))
+      .catch(() => setPayoffs({}));
+  }, [savedAt]);
 
   useEffect(() => {
     api.settings().then((s) => { setServer(s); setDraft(draftFrom(s)); }).catch((e) => setError(String(e.message ?? e)));
@@ -161,6 +170,13 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
               </div>
               <Switch checked={d.enabled} label={`${st.label} enabled`} onChange={(v) => setStrategy(st.name, { enabled: v })} />
             </div>
+            {payoffs[st.name] && (
+              <details className="payoff-details" open>
+                <summary className="small">Payoff diagram</summary>
+                <PayoffChart p={payoffs[st.name].payoff} height={200} />
+                <p className="muted small payoff-source">{payoffs[st.name].source}. Exit line uses this strategy's saved close-at-DTE.</p>
+              </details>
+            )}
             {!d.enabled && st.open_positions > 0 && (
               <p className="small note">No new {st.label.toLowerCase()} trades. The {st.open_positions} open will still be managed until closed.</p>
             )}

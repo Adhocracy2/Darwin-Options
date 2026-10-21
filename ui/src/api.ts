@@ -31,6 +31,8 @@ export type Candidate = {
   qty: number | null;
   reasons: string[];
   notes: Record<string, unknown>;
+  legs: { symbol: string; ratio: number; strike: number; expiry: string; right: string }[];
+  attach_to: string | null;
 };
 
 export type Status = {
@@ -106,6 +108,27 @@ async function req<T>(path: string, method = "GET", body?: unknown): Promise<T> 
   return r.json();
 }
 
+export type Payoff = {
+  prices: number[];
+  expiry: number[];
+  exit: number[];
+  spot: number;
+  pnl_now: number;
+  strikes: number[];
+  breakevens: number[];
+  max_profit: number | null; // null = keeps rising (unlimited)
+  max_loss: number;
+  expiry_date: string;
+  exit_date: string;
+  exit_dte: number;
+  has_later_legs: boolean;
+  entry_credit: number;
+  underlying?: string;
+  example?: boolean;
+};
+export type StrategyPayoff = { name: string; label: string; description: string; source: string; payoff: Payoff };
+export type PayoffRequest = { strategy: string; net_credit: number; qty: number; legs: { symbol: string; ratio: number }[] };
+
 export const api = {
   status: () => req<Status>("/api/status"),
   positions: (status: "open" | "closed" | "all" = "open") => req<Position[]>(`/api/positions?status=${status}`),
@@ -118,6 +141,9 @@ export const api = {
   performance: () => req<Performance>("/api/performance"),
   settings: () => req<Settings>("/api/settings"),
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
+  strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),
+  payoff: (r: PayoffRequest) => req<Payoff>("/api/payoff", "POST", r),
+  positionPayoff: (id: string) => req<Payoff>(`/api/positions/${id}/payoff`),
 };
 
 export const usd = (n: number | null | undefined, digits = 0) =>

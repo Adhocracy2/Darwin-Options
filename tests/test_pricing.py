@@ -60,3 +60,11 @@ def test_ev_counts_only_decay_until_planned_exit():
     to_expiry, _ = evaluate(legs, credit, 500, today, 0.16, 0.04, ivs, exit_dte=0)
     to_21, _ = evaluate(legs, credit, 500, today, 0.16, 0.04, ivs, exit_dte=21)
     assert to_expiry > to_21 > 0  # closing early gives up some decay but keeps the vol edge
+
+
+def test_american_floor_never_below_intrinsic():
+    deep_put = pricing.bs_price(300, 500, 0.5, 0.04, 0.2, Right.PUT)
+    assert deep_put < 200  # European undervalues it
+    assert pricing.american_floor_price(300, 500, 0.5, 0.04, 0.2, Right.PUT) == 200
+    atm = pricing.bs_price(500, 500, 0.5, 0.04, 0.2, Right.CALL)
+    assert pricing.american_floor_price(500, 500, 0.5, 0.04, 0.2, Right.CALL) == atm

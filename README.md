@@ -127,6 +127,24 @@ Tabs: Overview (equity, risk, P&L), Positions (with manual close), Scanner (cand
 reasons), Strategies (on/off and exit rules), Performance (by strategy and exit reason), Journal
 (every open, close, error and settings change).
 
+### Payoff diagrams
+
+Every strategy, scanner candidate and open position has a payoff diagram (the **Payoff** button
+on Scanner and Positions rows; the Strategies tab shows one per strategy). Each diagram shows:
+
+- **At expiry** (solid): P&L at the first leg's expiry. For calendars and LEAPS calls the later
+  leg is valued with Black-Scholes at its current implied volatility.
+- **At exit** (dashed): P&L at the strategy's planned exit date (its close-at-DTE), which is when
+  the manager will close it if no other rule fires first.
+- Profit and loss zones, break-evens (circles), strikes (ticks), today's price, and hover values.
+- Max profit and loss are taken over a much wider price range than the plot, so a loss that only
+  shows up far away is still reported. "Unlimited" means the profit keeps rising (a LEAPS with no
+  call written against it).
+
+Long legs valued before their expiry are never priced below intrinsic value (US options are
+American), so a calendar's worst case is its debit. The same rule is used in the expected-value
+model that ranks trades.
+
 ### Strategies tab
 
 - **New entries** master switch: off means nothing new opens; open positions are still managed.
