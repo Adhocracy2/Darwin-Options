@@ -41,7 +41,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     @app.get("/api/status")
     def status():
         acct = engine.broker.account()
-        return {"mode": cfg.mode, "data": cfg.data, "broker": engine.broker.name,
+        return {"mode": cfg.mode, "data": cfg.data_source, "broker": engine.broker.name,
+                "broker_kind": cfg.broker,
                 "account": asdict(acct), "universe": cfg.universe,
                 "allow_new_entries": cfg.allow_new_entries,
                 "strategies": [s.name for s in engine.strategies]}

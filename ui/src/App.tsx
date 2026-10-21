@@ -6,6 +6,14 @@ import { Journal, Overview, PerformanceView, Positions, Scanner } from "./compon
 const TABS = ["Overview", "Positions", "Scanner", "Performance", "Journal"] as const;
 type Tab = (typeof TABS)[number];
 
+const BROKERS: Record<string, string> = { alpaca: "Alpaca", ibkr: "Interactive Brokers" };
+
+function brokerLabel(s: Status) {
+  if (s.mode === "sim") return `Local sim · ${s.data} data`;
+  const name = BROKERS[s.broker_kind] ?? s.broker_kind;
+  return s.mode === "live" ? `LIVE · ${name}` : `${name} paper`;
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [status, setStatus] = useState<Status | null>(null);
@@ -41,7 +49,7 @@ export default function App() {
   };
 
   const runCycle = async () => {
-    if (status?.mode === "alpaca_live" && !confirm("This is LIVE trading with real money. Run a cycle?")) return;
+    if (status?.mode === "live" && !confirm("This is LIVE trading with real money. Run a cycle?")) return;
     setBusy("run");
     try {
       const r = await api.runCycle(false);
@@ -57,7 +65,7 @@ export default function App() {
         <h1>Flick</h1>
         <div className="badges">
           {status && <>
-            <span className={`badge ${status.mode === "alpaca_live" ? "live" : ""}`}>{status.mode === "alpaca_live" ? "LIVE" : status.mode === "sim" ? "Local sim" : "Alpaca paper"}</span>
+            <span className={`badge ${status.mode === "live" ? "live" : ""}`}>{brokerLabel(status)}</span>
             <span className="badge">{status.account.is_market_open ? "Market open" : "Market closed"}</span>
             <span className="badge">{status.universe.join(" · ")}</span>
             {!status.allow_new_entries && <span className="badge">New entries off</span>}

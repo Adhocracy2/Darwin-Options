@@ -76,9 +76,22 @@ class ExecutionConfig:
 
 
 @dataclass
+class IBKRConfig:
+    """Interactive Brokers via TWS or IB Gateway (must be running and logged in)."""
+    host: str = "127.0.0.1"
+    port: int = 4002  # IB Gateway: 4002 paper, 4001 live. TWS: 7497 paper, 7496 live.
+    client_id: int = 17  # the dashboard uses client_id + 1
+    account: str = ""  # blank = the only account on the login
+    market_data_type: int = 1  # 1 = live (needs OPRA subscription), 3 = delayed
+    max_expiries: int = 2  # expiries fetched per chain request (keeps requests within IB pacing)
+    timeout_s: int = 60
+
+
+@dataclass
 class Config:
-    mode: str = "alpaca_paper"  # sim | alpaca_paper | alpaca_live
-    data: str = "alpaca"  # alpaca | synthetic
+    mode: str = "paper"  # sim | paper | live
+    broker: str = "alpaca"  # alpaca | ibkr
+    data: str = ""  # blank = same as broker; or alpaca | ibkr | synthetic
     options_feed: str = "indicative"  # indicative (free) | opra (paid)
     universe: list[str] = field(default_factory=lambda: ["SPY", "QQQ", "IWM"])
     db_path: str = "var/flick.db"
@@ -94,6 +107,11 @@ class Config:
     risk: RiskConfig = field(default_factory=RiskConfig)
     management: ManagementConfig = field(default_factory=ManagementConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    ibkr: IBKRConfig = field(default_factory=IBKRConfig)
+
+    @property
+    def data_source(self) -> str:
+        return self.data or self.broker
 
     @property
     def alpaca_key(self) -> str:
@@ -104,9 +122,18 @@ class Config:
         return os.environ.get("ALPACA_SECRET_KEY", "")
 
     def validate(self) -> None:
-        if self.mode not in {"sim", "alpaca_paper", "alpaca_live"}:
+        legacy = {"alpaca_paper": ("paper", "alpaca"), "alpaca_live": ("live", "alpaca")}
+        if self.mode in legacy:
+            self.mode, self.broker = legacy[self.mode]
+        if self.mode not in {"sim", "paper", "live"}:
             raise ValueError(f"unknown mode {self.mode!r}")
-        if self.mode == "alpaca_live" and os.environ.get("FLICK_ALLOW_LIVE") != LIVE_CONFIRMATION:
+        if self.broker not in {"alpaca", "ibkr"}:
+            raise ValueError(f"unknown broker {self.broker!r}")
+        if self.data_source not in {"alpaca", "ibkr", "synthetic"}:
+            raise ValueError(f"unknown data source {self.data!r}")
+        if self.data_source == "synthetic" and self.mode != "sim":
+            raise ValueError("synthetic data can only be used with mode: sim")
+        if self.mode == "live" and os.environ.get("FLICK_ALLOW_LIVE") != LIVE_CONFIRMATION:
             raise RuntimeError(
                 "Live trading refused: set FLICK_ALLOW_LIVE=" + LIVE_CONFIRMATION + " to enable."
             )

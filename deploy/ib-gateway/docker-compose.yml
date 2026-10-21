@@ -1,0 +1,22 @@
+# IB Gateway in Docker, logged in automatically (IBC), restarted daily by IBC.
+# Image docs: https://github.com/gnzsnz/ib-gateway-docker. Check the port mapping
+# there before relying on it; this follows the compose example in that repo.
+#
+#   sudo apt-get install -y docker.io docker-compose-v2
+#   cp .env.example .env   # fill in your IBKR username/password
+#   sudo docker compose up -d
+#
+# Approve the first login on the IBKR mobile app (two-factor) if prompted.
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: always
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      READ_ONLY_API: "no"
+      TIME_ZONE: America/New_York
+    ports:
+      - "127.0.0.1:4001:4003"   # live API
+      - "127.0.0.1:4002:4004"   # paper API

@@ -1,11 +1,21 @@
 # Copy to config.yaml and edit. Every key is optional; defaults are in src/flick/config.py.
 
-# sim          = local paper broker (fills simulated from live Alpaca quotes)
-# alpaca_paper = Alpaca's paper account (recommended to start)
-# alpaca_live  = real money; also needs FLICK_ALLOW_LIVE in .env
-mode: alpaca_paper
-data: alpaca              # alpaca | synthetic (synthetic only works with mode: sim)
-options_feed: indicative  # indicative is free; opra needs an Alpaca data subscription
+# mode:   sim   = local simulated fills on real quotes from the broker below
+#         paper = the broker's paper account (recommended to start)
+#         live  = real money; also needs FLICK_ALLOW_LIVE in .env
+# broker: alpaca | ibkr
+mode: paper
+broker: alpaca
+data: ""                  # blank = same as broker; or alpaca | ibkr | synthetic (sim only)
+options_feed: indicative  # Alpaca only: indicative is free; opra needs a data subscription
+
+ibkr:
+  host: 127.0.0.1
+  port: 4002              # IB Gateway: 4002 paper, 4001 live. TWS: 7497 paper, 7496 live
+  client_id: 17           # the dashboard uses client_id + 1
+  account: ""             # blank = the only account on the login
+  market_data_type: 1     # 1 = live (needs OPRA options data subscription), 3 = delayed
+  max_expiries: 2
 
 universe: [SPY, QQQ, IWM]
 allow_new_entries: true

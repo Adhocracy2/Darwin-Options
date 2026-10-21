@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> None:
 
         from .api.app import create_app
 
+        cfg.ibkr.client_id += 1  # the trader service holds client_id; IBKR needs a distinct one
         uvicorn.run(create_app(cfg), host=args.host, port=args.port)
         return
 

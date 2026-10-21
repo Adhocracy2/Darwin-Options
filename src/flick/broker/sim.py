@@ -2,16 +2,11 @@
 and refuses orders priced better than the market would give."""
 from __future__ import annotations
 
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
-
 from ..analysis import leg_fill_price
 from ..data.base import MarketData
 from ..models import Fill, OrderIntent
 from ..store import Store
-from .base import Account
-
-NY = ZoneInfo("America/New_York")
+from .base import Account, us_market_open
 
 
 class SimBroker:
@@ -27,8 +22,7 @@ class SimBroker:
     def _market_open(self) -> bool:
         if self.always_open:
             return True
-        n = datetime.now(NY)
-        return n.weekday() < 5 and time(9, 30) <= n.time() <= time(16, 0)
+        return us_market_open()
 
     def account(self) -> Account:
         open_pos = self.store.positions("open")

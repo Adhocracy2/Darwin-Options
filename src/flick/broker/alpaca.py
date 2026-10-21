@@ -24,7 +24,7 @@ class AlpacaBroker:
         from alpaca.trading.client import TradingClient
 
         self.cfg = cfg
-        self.paper = cfg.mode != "alpaca_live"
+        self.paper = cfg.mode != "live"
         self.name = "alpaca_paper" if self.paper else "alpaca_live"
         self.client = TradingClient(cfg.alpaca_key, cfg.alpaca_secret, paper=self.paper)
 
