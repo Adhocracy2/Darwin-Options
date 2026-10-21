@@ -5,9 +5,13 @@ Wants=network-online.target
 
 [Service]
 User=@USER@
-WorkingDirectory=@DIR@
-EnvironmentFile=@DIR@/.env
-ExecStart=@DIR@/.venv/bin/flick loop --interval 300
+WorkingDirectory=@FLICK_HOME@/current
+EnvironmentFile=@FLICK_HOME@/shared/.env
+ExecStart=@FLICK_HOME@/current/.venv/bin/flick loop --interval 300
+# On stop (e.g. a deploy) the loop finishes its current cycle before exiting, so an order
+# waiting for a fill is completed or cancelled first. Give it time to do so.
+KillSignal=SIGTERM
+TimeoutStopSec=300
 Restart=on-failure
 RestartSec=30
 

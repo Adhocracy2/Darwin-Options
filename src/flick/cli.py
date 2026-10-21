@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import time
 from pathlib import Path
 
 from .config import load_config
@@ -17,6 +16,32 @@ def _setup_logging(path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler(path)])
+
+
+def run_loop(eng, interval: int, log, max_cycles: int | None = None) -> None:
+    """Run cycles until stopped. SIGTERM/SIGINT (systemctl stop, a deploy) never interrupt a
+    cycle: an order may be waiting for a fill. The loop exits after the current cycle ends."""
+    import signal
+    import threading
+
+    stop = threading.Event()
+
+    def request_stop(signum, _frame):
+        log.info("signal %s: stopping after the current cycle", signum)
+        stop.set()
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    cycles = 0
+    while not stop.is_set():
+        try:
+            log.info("cycle: %s", eng.run_once())
+        except Exception:
+            log.exception("cycle failed")
+        cycles += 1
+        if max_cycles is not None and cycles >= max_cycles:
+            break
+        stop.wait(interval)  # wakes immediately on a stop request
+    log.info("trader stopped cleanly")
 
 
 def print_review(r: dict) -> None:
@@ -110,12 +135,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "run":
         print(json.dumps(eng.run_once(force=args.force), indent=2))
     elif args.cmd == "loop":
-        while True:
-            try:
-                log.info("cycle: %s", eng.run_once())
-            except Exception:
-                log.exception("cycle failed")
-            time.sleep(args.interval)
+        run_loop(eng, args.interval, log)
     elif args.cmd == "positions":
         for p in eng.store.positions("open"):
             legs = ", ".join(f"{l.qty:+d} {l.symbol} @ {l.entry_price:.2f}" for l in p.open_legs)

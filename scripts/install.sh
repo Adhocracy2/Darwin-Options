@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Ubuntu 22.04/24.04 setup: Python venv, backend, React build, config files.
+# Local development setup: Python venv, backend, React build, config files.
+# For the trading PC, use GitHub Actions deploys instead: see docs/DEPLOY.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,4 +27,4 @@ echo "Done. Next:"
 echo "  1. Start IB Gateway logged into your paper account (see deploy/ib-gateway)"
 echo "  2. .venv/bin/flick check"
 echo "  3. .venv/bin/flick scan"
-echo "  4. scripts/install-services.sh   # run the trader + dashboard under systemd"
+echo "For the trading PC, deploy with GitHub Actions instead: docs/DEPLOY.md"

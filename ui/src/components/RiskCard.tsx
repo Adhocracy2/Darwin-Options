@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { RiskState } from "../api";
 import { api, pct, usd } from "../api";
 
-/** Growth plan & risk: goal progress, current limits, brakes, and measured edge. */
+/** Risk: current limits, brakes, measured edge, and optional equity milestones. */
 export function RiskCard({ refreshKey, live }: { refreshKey: unknown; live: boolean }) {
   const [r, setR] = useState<RiskState | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -19,20 +19,20 @@ export function RiskCard({ refreshKey, live }: { refreshKey: unknown; live: bool
 
   return (
     <div className="card">
-      <h2>Growth plan &amp; risk {r.pilot && <span className="badge live">Pilot</span>}</h2>
+      <h2>Risk {r.pilot && <span className="badge live">Pilot</span>}</h2>
       {r.capital_mode && (
         <p className="small muted" style={{ marginTop: 0 }}>
           Trading capital <b>{usd(r.equity)}</b> ({usd(r.capital)} allocated + system P&amp;L) of a {usd(r.account_equity)} account.
-          Sizing, drawdown and goals use the trading capital only.
+          Sizing and drawdown use the trading capital only.
         </p>)}
-      <div className="goals">
+      {r.goals.length > 0 && <div className="goals">
         {r.goals.map((g) => (
           <div key={g.target} className="goal">
             <div className="small"><b>{usd(g.target)}</b> {g.reached ? <span className="pos status-ok">reached</span> : <span className="muted">{pct(g.progress)}</span>}</div>
             <div className="bar" role="progressbar" aria-valuenow={Math.round(g.progress * 100)} aria-valuemin={0} aria-valuemax={100}
                  aria-label={`Progress to ${usd(g.target)}`}><span style={{ width: `${g.progress * 100}%` }} /></div>
           </div>))}
-      </div>
+      </div>}
 
       {r.smallest_trade_max_loss != null && r.smallest_trade_max_loss > perTrade && (
         <div className="note small halted">

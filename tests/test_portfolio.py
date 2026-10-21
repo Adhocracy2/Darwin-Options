@@ -99,7 +99,7 @@ def test_risk_api_and_reset(engine):
     client = TestClient(create_app(engine.cfg, engine))
     client.post("/api/scan")
     r = client.get("/api/risk").json()
-    assert r["stage"]["min_equity"] == 10_000 and r["goals"][0]["reached"] is True
+    assert r["stage"]["min_equity"] == 10_000 and r["goals"] == []
     assert r["smallest_trade_max_loss"] > 0 and "probation" in r["reasons"][0]
     after = client.post("/api/risk/reset").json()
     assert after["drawdown"] == 0 and any(e["kind"] == "risk" for e in client.get("/api/events").json())

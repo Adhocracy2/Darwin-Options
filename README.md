@@ -68,7 +68,9 @@ src/flick/
   api/app.py           FastAPI backend for the dashboard
   cli.py               `flick` command
 ui/                    React + Vite dashboard
-deploy/, scripts/      Ubuntu install, systemd units, IB Gateway (Docker)
+deploy/, scripts/      deploy script, systemd units, IB Gateway (Docker)
+.github/workflows/     CI on every push; deploy to the trading PC on merge to main
+docs/DEPLOY.md         setting up the PC and the GitHub runner
 ```
 
 ## Setup on Ubuntu
@@ -96,16 +98,16 @@ Alternatively, install IB Gateway from ibkr.com and enable the API on port 4002 
 
 ### 3. Flick
 
+**On the trading PC, deploy with GitHub Actions:** see [docs/DEPLOY.md](docs/DEPLOY.md). Every
+merge to `main` is tested and deployed automatically, with rollback.
+
+**For local development** on any machine:
+
 ```bash
 scripts/install.sh           # venv, deps, builds the UI, runs tests
-nano config.yaml             # universe, risk limits, strategy settings
-.venv/bin/flick check        # should print broker=ibkr_paper and your equity
+.venv/bin/flick check        # connectivity
 .venv/bin/flick scan         # ranked candidates and why each passes/fails the risk gate
-.venv/bin/flick run --force  # one cycle by hand
-scripts/install-services.sh  # run trader + dashboard as systemd services
 ```
-
-Logs: `journalctl -u flick-trader -f` and `var/flick.log`. Journal database: `var/flick.db`.
 
 ### IBKR notes
 
@@ -127,7 +129,7 @@ Tabs: Overview (equity, risk, P&L), Positions (with manual close), Scanner (cand
 reasons), Strategies (on/off and exit rules), Performance (by strategy and exit reason), Journal
 (every open, close, error and settings change).
 
-### Position sizing and risk (growth plan)
+### Position sizing and risk
 
 Every new trade passes these, in addition to the never-naked check:
 
@@ -139,11 +141,11 @@ Every new trade passes these, in addition to the never-naked check:
 | **Correlated groups** | SPY, QQQ, IWM and DIA share one 30% risk budget, because they fall together. |
 | **Hard cap** | No trade may risk more than `max_loss_per_trade` dollars. |
 
-The Overview tab's **Growth plan & risk** card shows progress to your goals, the current limits,
+The Overview tab's **Risk** card shows the current limits,
 drawdown, today's change, measured edge and why trades are paused, if they are.
 
 **Trading capital** (`risk.capital`): fund the account with $2,000 (IBKR's margin minimum for
-spreads) but let the system use only, say, $500. Sizing, drawdown and goals are then measured on
+spreads) but let the system use only, say, $500. Sizing and drawdown are then measured on
 that $500 plus the system's own profit and loss, never on the whole account.
 
 **Pilot mode** (`risk.pilot`) for the first live days: one position at a time, one new trade a

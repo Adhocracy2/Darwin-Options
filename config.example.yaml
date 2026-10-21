@@ -94,7 +94,6 @@ risk:
   groups:                        # underlyings that move together share one risk budget
     US equity index: [SPY, QQQ, IWM, DIA]
   max_group_risk_pct: 0.30
-  goals: [1000, 10000]
   # Use only part of the account. Sizing, drawdown and goals are measured on this plus the
   # system's own P&L. Leave unset to use the whole account.
   capital: 500

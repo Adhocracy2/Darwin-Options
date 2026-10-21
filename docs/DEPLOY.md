@@ -1,0 +1,118 @@
+# Deploying to your Ubuntu PC with GitHub Actions
+
+Every merge to `main` is tested on GitHub's servers, then deployed to your PC by a **self-hosted
+runner**: a small GitHub agent running on the PC. It connects out to GitHub, so you don't open any
+ports, and it only runs this repo's deploy workflow (the repo is private, and pull requests never run on it).
+
+```
+merge to main ──> CI on GitHub (lint, 100+ tests, UI build)
+                    └─ passes ──> runner on your PC: scripts/deploy.sh
+                                    build + test a new release folder
+                                    switch ~/flick/current to it
+                                    restart services (trader finishes its cycle first)
+                                    health check, roll back if it fails
+```
+
+## One-time setup (about 15 minutes)
+
+Do all of this as the normal Linux user that will run Flick (not root).
+
+### 1. Install prerequisites
+
+```bash
+sudo apt update
+sudo apt install -y git curl python3 python3-venv python3-pip
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+### 2. Register the PC as a runner
+
+1. On GitHub: **repo → Settings → Actions → Runners → New self-hosted runner**, choose **Linux / x64**.
+2. Run the commands GitHub shows (download, then `./config.sh --url ... --token ...`), in a folder
+   such as `~/actions-runner`. When `config.sh` asks:
+   - runner group: press Enter
+   - name: e.g. `trading-pc`
+   - **additional labels: `flick-pc`** (the deploy workflow looks for this label)
+   - work folder: press Enter
+3. Install it as a service so it starts on boot, running as **your** user:
+   ```bash
+   cd ~/actions-runner
+   sudo ./svc.sh install "$USER"
+   sudo ./svc.sh start
+   ```
+   The runner should show as **Idle** on the Runners page.
+
+### 3. First deploy
+
+On GitHub: **Actions → Deploy to trading PC → Run workflow** (choose `main`), or merge a pull
+request into `main`. The first run creates:
+
+```
+~/flick/shared/config.yaml   your settings (seeded from config.example.yaml)
+~/flick/shared/.env          secrets, e.g. FLICK_ALLOW_LIVE (chmod 600)
+~/flick/shared/var/          trade journal (flick.db) and logs
+~/flick/releases/<time>-<sha>/
+~/flick/current -> the release in use
+```
+
+Deploys never overwrite anything in `shared/`.
+
+### 4. Configure, then install the services (once)
+
+```bash
+nano ~/flick/shared/config.yaml        # mode: paper, ibkr port, capital, pilot, ...
+sudo ~/flick/current/scripts/install-services.sh
+```
+
+This installs `flick-trader` and `flick-web` and adds a sudoers rule that lets your user restart
+exactly those two services without a password, which the runner needs. From now on every
+deploy restarts them automatically.
+
+### 5. Check it
+
+```bash
+cd ~/flick/current && .venv/bin/flick ibkr-check     # IB Gateway must be running (see README)
+systemctl status flick-trader flick-web
+journalctl -u flick-trader -f
+```
+
+Dashboard: http://127.0.0.1:8000 on the PC. From another machine:
+`ssh -L 8000:127.0.0.1:8000 you@trading-pc`, then open http://127.0.0.1:8000.
+
+## Day to day
+
+- **Deploy:** merge a pull request into `main`. Watch it under **Actions**.
+- **Redeploy or deploy a branch for testing:** Actions → Deploy to trading PC → Run workflow → pick the branch.
+- **Approve deploys by hand** (optional): repo → Settings → Environments → `trading-pc` → add
+  yourself as a required reviewer. Each deploy then waits for your click.
+- **Roll back by hand:** point `current` at an earlier release and restart:
+  ```bash
+  ls ~/flick/releases
+  ln -sfn ~/flick/releases/<older> ~/flick/current
+  sudo systemctl restart flick-trader flick-web
+  ```
+- **Which version is running:** `cat ~/flick/current/REVISION`
+
+## What a deploy does (scripts/deploy.sh)
+
+1. Unpacks the commit into a new `releases/` folder.
+2. Creates its own Python environment, builds the dashboard and **runs the full test suite** there.
+3. Checks that your `config.yaml` loads with the new code.
+4. Only if all of that passes: switches `current` to the new release in one step.
+5. Restarts the services. The trader **finishes its current cycle before stopping**, so an order
+   waiting for a fill is completed or cancelled, never abandoned.
+6. Waits 15 seconds and checks both services. If one crashed, it switches back to the previous
+   release, restarts, and the workflow fails so you see it.
+7. Keeps the last 3 releases (`FLICK_KEEP_RELEASES`).
+
+If anything in steps 1–3 fails, nothing changes on the PC; the running version keeps running.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Deploy job stuck on "Waiting for a runner" | Runner offline: `sudo ~/actions-runner/svc.sh status`, check the `flick-pc` label |
+| `sudo: a password is required` during deploy | Run step 4 (`install-services.sh`) once |
+| `config.yaml doesn't load with this release` | A setting changed name; compare with `~/flick/current/config.example.yaml` |
+| Services `activating` after deploy | Usually IB Gateway isn't running or logged in; `journalctl -u flick-trader -n 50` |

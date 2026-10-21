@@ -112,9 +112,9 @@ class RiskConfig:
     # Underlyings that move together count as one bet.
     groups: dict = field(default_factory=lambda: {"US equity index": ["SPY", "QQQ", "IWM", "DIA"]})
     max_group_risk_pct: float = 0.30
-    goals: list = field(default_factory=lambda: [1_000, 10_000])
+    goals: list = field(default_factory=list)  # optional equity milestones shown on the dashboard
 
-    # Trading capital: how much of the account the system may use. Sizing, drawdown and goals
+    # Trading capital: how much of the account the system may use. Sizing and drawdown
     # are measured on this plus the system's own P&L, never the whole account. None = whole account.
     capital: float | None = None
 

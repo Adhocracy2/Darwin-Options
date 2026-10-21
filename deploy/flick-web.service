@@ -4,11 +4,12 @@ After=network-online.target
 
 [Service]
 User=@USER@
-WorkingDirectory=@DIR@
-EnvironmentFile=@DIR@/.env
+WorkingDirectory=@FLICK_HOME@/current
+EnvironmentFile=@FLICK_HOME@/shared/.env
 # Localhost only on purpose: the dashboard can place trades and has no login.
-ExecStart=@DIR@/.venv/bin/flick serve --host 127.0.0.1 --port 8000
+ExecStart=@FLICK_HOME@/current/.venv/bin/flick serve --host 127.0.0.1 --port 8000
 Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

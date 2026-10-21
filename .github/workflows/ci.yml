@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]  # main is tested by the deploy workflow before it deploys
+  workflow_call:  # reused by deploy.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest  # GitHub's machine, not your PC
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install
+        run: pip install -e '.[dev]' pyflakes
+      - name: Lint
+        run: python -m pyflakes src tests
+      - name: Tests
+        run: pytest -q
+      - name: Build dashboard
+        working-directory: ui
+        run: npm ci --no-audit --no-fund && npm run build
