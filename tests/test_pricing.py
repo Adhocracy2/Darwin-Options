@@ -55,8 +55,8 @@ def test_ev_counts_only_decay_until_planned_exit():
     legs = [Leg(short, -1), Leg(long, 1)]
     t = 44 / 365
     credit = (pricing.bs_price(500, 480, t, 0.04, 0.22, Right.PUT)
-              - pricing.bs_price(500, 475, t, 0.04, 0.23, Right.PUT))
-    ivs = {short.symbol: 0.22, long.symbol: 0.23}
+              - pricing.bs_price(500, 475, t, 0.04, 0.22, Right.PUT))
+    ivs = {short.symbol: 0.22, long.symbol: 0.22}  # flat IV above the 16% forecast vol
     to_expiry, _ = evaluate(legs, credit, 500, today, 0.16, 0.04, ivs, exit_dte=0)
     to_21, _ = evaluate(legs, credit, 500, today, 0.16, 0.04, ivs, exit_dte=21)
     assert to_expiry > to_21 > 0  # closing early gives up some decay but keeps the vol edge
