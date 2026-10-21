@@ -354,6 +354,8 @@ class Engine:
 
     def run_once(self, force: bool = False) -> dict:
         """One cycle. A file lock stops the scheduler and the UI from trading at the same time."""
+        if self.cfg.db_path == ":memory:":  # in-memory journal: one process, nothing to lock against
+            return self._cycle(force)
         lock_path = Path(self.cfg.db_path).with_suffix(".lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with open(lock_path, "w") as fh:
