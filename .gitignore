@@ -10,3 +10,4 @@ ui/dist/
 .pytest_cache/
 deploy/ib-gateway/.env
 ui/*.tsbuildinfo
+*.lock
