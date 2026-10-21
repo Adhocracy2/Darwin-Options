@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Candidate, Event, Performance, Position, Snapshot, Status } from "./api";
 import { api } from "./api";
+import { StrategiesView } from "./components/StrategiesView";
 import { Journal, Overview, PerformanceView, Positions, Scanner } from "./components/Views";
 
-const TABS = ["Overview", "Positions", "Scanner", "Performance", "Journal"] as const;
+const TABS = ["Overview", "Positions", "Scanner", "Strategies", "Performance", "Journal"] as const;
 type Tab = (typeof TABS)[number];
 
 function brokerLabel(s: Status) {
@@ -79,6 +80,7 @@ export default function App() {
       {tab === "Overview" && <Overview status={status} positions={open} equity={equity} perf={perf} />}
       {tab === "Positions" && <Positions open={open} closed={closed} onChange={refresh} />}
       {tab === "Scanner" && <Scanner scan={scan} onScan={runScan} scanning={busy === "scan"} />}
+      {tab === "Strategies" && <StrategiesView live={status?.mode === "live"} onSaved={refresh} />}
       {tab === "Performance" && <PerformanceView perf={perf} />}
       {tab === "Journal" && <Journal events={events} />}
     </div>

@@ -5,7 +5,7 @@ import logging
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +14,7 @@ from ..engine import Engine
 from ..factory import build_engine
 from ..manager import ExitAction
 from ..report import performance
+from ..settings import SETTINGS_KEY, SettingsError, describe as describe_settings
 
 log = logging.getLogger(__name__)
 UI_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
@@ -40,6 +41,7 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
 
     @app.get("/api/status")
     def status():
+        engine.refresh_settings()
         acct = engine.broker.account()
         return {"mode": cfg.mode, "data": cfg.data, "broker": engine.broker.name,
                 "account": asdict(acct), "universe": cfg.universe,
@@ -50,6 +52,26 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     def config():
         d = asdict(cfg)
         return d
+
+    def settings_view():
+        overlay, _ = engine.store.get_setting(SETTINGS_KEY)
+        counts: dict[str, int] = {}
+        for p in engine.store.positions("open"):
+            counts[p.strategy] = counts.get(p.strategy, 0) + 1
+        return describe_settings(engine.cfg, engine.base_cfg, overlay, counts)
+
+    @app.get("/api/settings")
+    def get_settings():
+        engine.refresh_settings()
+        return settings_view()
+
+    @app.put("/api/settings")
+    def put_settings(overlay: dict = Body(...)):
+        try:
+            engine.update_settings(overlay)
+        except SettingsError as e:
+            raise HTTPException(400, str(e))
+        return settings_view()
 
     @app.get("/api/positions")
     def positions(status: str = "open"):

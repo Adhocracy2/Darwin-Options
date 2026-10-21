@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
   ts TEXT PRIMARY KEY, equity REAL, open_risk REAL, realized REAL, unrealized REAL, data TEXT);
 CREATE TABLE IF NOT EXISTS scans (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
 """
 
 
@@ -87,6 +89,19 @@ class Store:
             rows = c.execute("SELECT ts, equity, open_risk, realized, unrealized FROM snapshots "
                              "ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in reversed(rows)]
+
+    def get_setting(self, key: str) -> tuple[dict, int]:
+        """(value, version). Version 0 means never saved."""
+        with self._conn() as c:
+            r = c.execute("SELECT value, version FROM settings WHERE key = ?", (key,)).fetchone()
+        return (json.loads(r["value"]), r["version"]) if r else ({}, 0)
+
+    def set_setting(self, key: str, value: dict) -> int:
+        with self._conn() as c:
+            r = c.execute("SELECT version FROM settings WHERE key = ?", (key,)).fetchone()
+            version = (r["version"] if r else 0) + 1
+            c.execute("INSERT OR REPLACE INTO settings VALUES (?,?,?,?)", (key, json.dumps(value), version, now()))
+        return version
 
     def save_scan(self, rows: list[dict]) -> None:
         with self._conn() as c:

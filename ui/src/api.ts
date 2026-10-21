@@ -65,9 +65,44 @@ export type Performance = {
 export type Snapshot = { ts: string; equity: number; open_risk: number; realized: number; unrealized: number };
 export type Event = { id: number; ts: string; kind: string; position_id: string | null; message: string };
 
-async function req<T>(path: string, method = "GET"): Promise<T> {
-  const r = await fetch(path, { method });
-  if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+export type FieldKind = "pct" | "mult" | "days" | "price" | "bool";
+export type FieldMeta = { label: string; help: string; kind: FieldKind; min: number; max: number };
+export type ExitField = { key: string; value: number | boolean; default: number | boolean; changed: boolean };
+export type StrategySettings = {
+  name: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  enabled_default: boolean;
+  open_positions: number;
+  exit: ExitField[];
+};
+export type Settings = {
+  allow_new_entries: boolean;
+  allow_new_entries_default: boolean;
+  strategies: StrategySettings[];
+  fields: Record<string, FieldMeta>;
+};
+export type SettingsUpdate = {
+  allow_new_entries?: boolean;
+  strategies: Record<string, { enabled?: boolean; exit?: Record<string, number | boolean | null> }>;
+};
+
+/** Error carrying the server's message (FastAPI puts it in `detail`). */
+export class ApiError extends Error {}
+
+async function req<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    let msg = `${method} ${path}: ${r.status} ${text}`;
+    try { const j = JSON.parse(text); if (typeof j.detail === "string") msg = j.detail; } catch { /* not JSON */ }
+    throw new ApiError(msg);
+  }
   return r.json();
 }
 
@@ -81,6 +116,8 @@ export const api = {
   events: () => req<Event[]>("/api/events"),
   equity: () => req<Snapshot[]>("/api/equity"),
   performance: () => req<Performance>("/api/performance"),
+  settings: () => req<Settings>("/api/settings"),
+  saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
 };
 
 export const usd = (n: number | null | undefined, digits = 0) =>

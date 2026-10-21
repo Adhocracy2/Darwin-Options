@@ -1,6 +1,7 @@
 """The trading loop: manage open positions, then scan, check risk, and open new trades."""
 from __future__ import annotations
 
+import copy
 import fcntl
 import logging
 import math
@@ -16,6 +17,7 @@ from .models import Candidate, Fill, Leg, OptionContract, OrderIntent, Position,
 from .risk import RiskGate, assert_never_naked, holdings_of
 from .store import Store
 from .strategies.base import StrategyContext
+from .settings import SETTINGS_KEY, apply as apply_settings, validate as validate_settings
 from .strategies import STRATEGIES
 from . import analysis
 
@@ -41,7 +43,32 @@ class Engine:
         self.cfg, self.md, self.broker, self.store = cfg, md, broker, store
         self.gate = RiskGate(cfg)
         self.manager = PositionManager(cfg)
-        self.strategies = [cls() for name, cls in STRATEGIES.items() if getattr(cfg, name).enabled]
+        self.base_cfg = copy.deepcopy(cfg)  # config.yaml as loaded; dashboard settings go on top
+        self._settings_version = 0
+        self._build_strategies()
+        self.refresh_settings()
+
+    def _build_strategies(self) -> None:
+        self.strategies = [cls() for name, cls in STRATEGIES.items() if getattr(self.cfg, name).enabled]
+
+    def refresh_settings(self) -> bool:
+        """Apply dashboard settings if they changed since we last looked. Returns True if applied."""
+        overlay, version = self.store.get_setting(SETTINGS_KEY)
+        if version == self._settings_version:
+            return False
+        apply_settings(self.cfg, self.base_cfg, overlay)
+        self._settings_version = version
+        self._build_strategies()
+        log.info("dashboard settings v%s applied", version)
+        return True
+
+    def update_settings(self, overlay: dict) -> dict:
+        """Validate, save and apply new dashboard settings. Returns the stored overlay."""
+        clean = validate_settings(overlay)
+        self.store.set_setting(SETTINGS_KEY, clean)
+        self.refresh_settings()
+        self.store.event("settings", "strategy settings changed", data=clean)
+        return clean
 
     # ---- scanning ------------------------------------------------------------
 
@@ -192,6 +219,7 @@ class Engine:
 
     def preview(self) -> list[dict]:
         """Scan and risk-check without trading."""
+        self.refresh_settings()
         acct = self.broker.account()
         positions = self.store.positions("open")
         rows = [candidate_row(c, self.gate.check(c, positions, acct.equity, acct.buying_power, self.md.today()))
@@ -211,6 +239,7 @@ class Engine:
             return self._cycle(force)
 
     def _cycle(self, force: bool) -> dict:
+        self.refresh_settings()
         acct = self.broker.account()
         if not acct.is_market_open and not force:
             return {"skipped": "market closed"}

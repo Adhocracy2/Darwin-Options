@@ -15,8 +15,8 @@ Every strategy is defined-risk: the most it can lose is known before the order g
 | **Calendar** (`calendar`) | Short front month (25–40 DTE), long back month at the same strike, puts or calls | debit paid | 25% profit, stop at 50% of debit, close at 5 DTE |
 | **LEAPS-backed calls** (`leaps_call`) | Long deep-ITM LEAPS call, short 21–45 DTE OTM calls written against it, repeatedly | net debit | short call: 50% profit / 21 DTE; LEAPS sold at 120 DTE or −40% |
 
-Turn each on or off with `enabled` in `config.yaml`. Management settings can be changed per
-strategy under `management.overrides`.
+Turn strategies on and off, and change their exit rules, in the dashboard's **Strategies** tab
+(see below), or with `enabled` and `management.overrides` in `config.yaml`.
 
 Not included, because they have naked short legs: short strangles and straddles, jade lizards,
 naked puts, ratio spreads.
@@ -124,7 +124,20 @@ Logs: `journalctl -u flick-trader -f` and `var/flick.log`. Journal database: `va
 it can place trades and has no login. Use an SSH tunnel (`ssh -L 8000:127.0.0.1:8000 box`) to view it remotely.
 
 Tabs: Overview (equity, risk, P&L), Positions (with manual close), Scanner (candidates + risk gate
-reasons), Performance (by strategy and exit reason), Journal (every open, close, error).
+reasons), Strategies (on/off and exit rules), Performance (by strategy and exit reason), Journal
+(every open, close, error and settings change).
+
+### Strategies tab
+
+- **New entries** master switch: off means nothing new opens; open positions are still managed.
+- Per strategy: an **on/off switch** and its **exit rules** (take profit, stop loss, close-at-DTE,
+  minimum short time value, strike-threatened check, and the LEAPS rules for LEAPS calls).
+- Switching a strategy off stops new trades only. Its open positions keep being managed until they close.
+- Each value shows its `config.yaml` default and a Reset link. Out-of-range values can't be saved
+  (for example, close-at-DTE can't go below 1, so shorts are never held to expiry).
+- Settings are stored in the journal database and picked up by the trader at its next cycle, no restart.
+  Every change is logged in the Journal.
+- Never-naked, max-loss and sizing limits are not editable from the dashboard. Change those in `config.yaml`.
 
 For UI development: `flick serve` in one terminal, `cd ui && npm run dev` in another.
 

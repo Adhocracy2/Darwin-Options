@@ -1,0 +1,215 @@
+import { useEffect, useMemo, useState } from "react";
+import type { FieldMeta, Settings, SettingsUpdate } from "../api";
+import { api } from "../api";
+
+/** Local edit state. Numbers are kept as the text typed, in display units (e.g. "50" for 50%). */
+type Draft = {
+  allow_new_entries: boolean;
+  strategies: Record<string, { enabled: boolean; exit: Record<string, string | boolean> }>;
+};
+
+const UNIT: Record<string, string> = { pct: "%", mult: "× credit", days: "days", price: "$ / share" };
+
+function toDisplay(meta: FieldMeta, v: number | boolean): string | boolean {
+  if (typeof v === "boolean") return v;
+  if (meta.kind === "pct") return String(+(v * 100).toFixed(2));
+  return String(v);
+}
+
+function fromDisplay(meta: FieldMeta, v: string | boolean): number | boolean | null {
+  if (typeof v === "boolean") return v;
+  if (v.trim() === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return meta.kind === "pct" ? n / 100 : n;
+}
+
+function fmt(meta: FieldMeta, v: number | boolean): string {
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  switch (meta.kind) {
+    case "pct": return `${+(v * 100).toFixed(2)}%`;
+    case "mult": return `${v}×`;
+    case "days": return `${v} ${v === 1 ? "day" : "days"}`;
+    case "price": return `$${v.toFixed(2)}`;
+    default: return String(v);
+  }
+}
+
+function draftFrom(s: Settings): Draft {
+  return {
+    allow_new_entries: s.allow_new_entries,
+    strategies: Object.fromEntries(s.strategies.map((st) => [st.name, {
+      enabled: st.enabled,
+      exit: Object.fromEntries(st.exit.map((f) => [f.key, toDisplay(s.fields[f.key], f.value)])),
+    }])),
+  };
+}
+
+function fieldError(meta: FieldMeta, raw: string | boolean): string | null {
+  if (typeof raw === "boolean") return null;
+  const v = fromDisplay(meta, raw);
+  if (v === null) return "Enter a number";
+  if (meta.kind === "days" && !Number.isInteger(v)) return "Whole days only";
+  if ((v as number) < meta.min || (v as number) > meta.max) return `${fmt(meta, meta.min)} to ${fmt(meta, meta.max)}`;
+  return null;
+}
+
+function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled}
+            className={`switch ${checked ? "on" : ""}`} onClick={() => onChange(!checked)}>
+      <span className="knob" />
+      <span className="switch-text">{checked ? "On" : "Off"}</span>
+    </button>
+  );
+}
+
+export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () => void }) {
+  const [server, setServer] = useState<Settings | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [showHelp, setShowHelp] = useState<boolean>(() => {
+    try { return localStorage.getItem("flick.showHelp") === "1"; } catch { return false; }
+  });
+  const toggleHelp = (v: boolean) => {
+    setShowHelp(v);
+    try { localStorage.setItem("flick.showHelp", v ? "1" : "0"); } catch { /* storage unavailable */ }
+  };
+
+  useEffect(() => {
+    api.settings().then((s) => { setServer(s); setDraft(draftFrom(s)); }).catch((e) => setError(String(e.message ?? e)));
+  }, []);
+
+  const baseline = useMemo(() => (server ? draftFrom(server) : null), [server]);
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(baseline), [draft, baseline]);
+  const invalid = useMemo(() => {
+    if (!server || !draft) return false;
+    return server.strategies.some((st) => st.exit.some((f) => fieldError(server.fields[f.key], draft.strategies[st.name].exit[f.key])));
+  }, [server, draft]);
+
+  if (!server || !draft) return <div className="card">{error ? <div className="error">{error}</div> : <p className="muted">Loading…</p>}</div>;
+
+  const setStrategy = (name: string, patch: Partial<Draft["strategies"][string]>) =>
+    setDraft({ ...draft, strategies: { ...draft.strategies, [name]: { ...draft.strategies[name], ...patch } } });
+  const setField = (name: string, key: string, v: string | boolean) =>
+    setStrategy(name, { exit: { ...draft.strategies[name].exit, [key]: v } });
+
+  const save = async () => {
+    const turningOn = server.strategies.filter((s) => !s.enabled && draft.strategies[s.name].enabled).map((s) => s.label);
+    if (live && !confirm(`This changes how LIVE trades are managed${turningOn.length ? ` and turns on ${turningOn.join(", ")}` : ""}. Save?`)) return;
+    // Values equal to the config.yaml default are sent as "reset" so config.yaml stays the source of truth.
+    const update: SettingsUpdate = { strategies: {} };
+    if (draft.allow_new_entries !== server.allow_new_entries_default) update.allow_new_entries = draft.allow_new_entries;
+    for (const st of server.strategies) {
+      const d = draft.strategies[st.name];
+      const entry: SettingsUpdate["strategies"][string] = {};
+      if (d.enabled !== st.enabled_default) entry.enabled = d.enabled;
+      const exit: Record<string, number | boolean | null> = {};
+      for (const f of st.exit) {
+        const v = fromDisplay(server.fields[f.key], d.exit[f.key]);
+        if (v !== null && v !== f.default) exit[f.key] = v;
+      }
+      if (Object.keys(exit).length) entry.exit = exit;
+      if (Object.keys(entry).length) update.strategies[st.name] = entry;
+    }
+    setSaving(true);
+    try {
+      const s = await api.saveSettings(update);
+      setServer(s);
+      setDraft(draftFrom(s));
+      setError(null);
+      setSavedAt(new Date());
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="settings">
+      {error && <div className="error">{error}</div>}
+
+      <div className="card">
+        <div className="strategy-head">
+          <div>
+            <h2>New entries</h2>
+            <p className="muted small">Master switch. When off, nothing new is opened; open positions are still managed and closed by their exit rules.</p>
+          </div>
+          <Switch checked={draft.allow_new_entries} label="New entries" onChange={(v) => setDraft({ ...draft, allow_new_entries: v })} />
+        </div>
+      </div>
+
+      <div className="toolbar">
+        <p className="muted small" style={{ margin: 0, flex: 1, minWidth: 240 }}>
+          Changes are picked up by the trader at its next cycle (within 5 minutes). Never-naked and max-loss limits
+          are not editable here. Values left at their default follow <code>config.yaml</code>.
+        </p>
+        <label className="small"><input type="checkbox" checked={showHelp} onChange={(e) => toggleHelp(e.target.checked)} /> Show explanations</label>
+      </div>
+
+      {server.strategies.map((st) => {
+        const d = draft.strategies[st.name];
+        return (
+          <div className={`card strategy ${d.enabled ? "" : "disabled"}`} key={st.name}>
+            <div className="strategy-head">
+              <div>
+                <h2>{st.label} {st.open_positions > 0 && <span className="badge">{st.open_positions} open</span>}</h2>
+                <p className="muted small">{st.description}</p>
+              </div>
+              <Switch checked={d.enabled} label={`${st.label} enabled`} onChange={(v) => setStrategy(st.name, { enabled: v })} />
+            </div>
+            {!d.enabled && st.open_positions > 0 && (
+              <p className="small note">No new {st.label.toLowerCase()} trades. The {st.open_positions} open will still be managed until closed.</p>
+            )}
+            <div className="fields">
+              {st.exit.map((f) => {
+                const meta = server.fields[f.key];
+                const raw = d.exit[f.key];
+                const err = fieldError(meta, raw);
+                const current = fromDisplay(meta, raw);
+                const isDefault = current === f.default;
+                const id = `${st.name}-${f.key}`;
+                return (
+                  <div className="field" key={f.key}>
+                    <label htmlFor={id} title={meta.help}>{meta.label}</label>
+                    {meta.kind === "bool" ? (
+                      <Switch checked={raw as boolean} label={meta.label} onChange={(v) => setField(st.name, f.key, v)} />
+                    ) : (
+                      <div className={`input-unit ${err ? "invalid" : ""}`}>
+                        <input id={id} inputMode="decimal" value={raw as string} aria-invalid={!!err}
+                               onChange={(e) => setField(st.name, f.key, e.target.value)} />
+                        <span className="unit">{UNIT[meta.kind]}</span>
+                      </div>
+                    )}
+                    <div className="small">
+                      {err ? <span className="neg">{err}</span> : isDefault
+                        ? <span className="muted">Default</span>
+                        : <>
+                            <span className="muted">Default {fmt(meta, f.default)} · </span>
+                            <button type="button" className="link" onClick={() => setField(st.name, f.key, toDisplay(meta, f.default))}>Reset</button>
+                          </>}
+                    </div>
+                    {showHelp && <p className="muted small help">{meta.help}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {(dirty || savedAt) && (
+        <div className="savebar">
+          <span className="small">{dirty ? (invalid ? "Fix the highlighted values to save" : "Unsaved changes") : `Saved ${savedAt!.toLocaleTimeString()}`}</span>
+          {dirty && <>
+            <button className="btn secondary" onClick={() => setDraft(baseline)} disabled={saving}>Discard</button>
+            <button className="btn" onClick={save} disabled={saving || invalid}>{saving ? "Saving…" : "Save"}</button>
+          </>}
+        </div>
+      )}
+    </div>
+  );
+}
