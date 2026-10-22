@@ -13,7 +13,7 @@ from darwin_options.config import Config  # noqa: E402
 from darwin_options.data.synthetic import SyntheticMarketData  # noqa: E402
 from darwin_options.engine import Engine  # noqa: E402
 from darwin_options.ibkr import IBSession, PaperAccountMismatch, from_ib_option  # noqa: E402
-from darwin_options.models import OptionContract  # noqa: E402
+from darwin_options.models import OptionContract, Right  # noqa: E402
 from darwin_options.risk import holdings_of, uncovered_shorts  # noqa: E402
 from darwin_options.store import Store  # noqa: E402
 
@@ -262,3 +262,59 @@ def test_account_in_aud_is_converted_to_usd():
     assert account_usd(aud, [v("ExchangeRate", "1.6", "USD")], 0.65) == pytest.approx((625000, 562500))
     usd = [v("NetLiquidation", "2500", "USD"), v("AvailableFunds", "2000", "USD")]
     assert account_usd(usd, []) == (2500, 2000)
+
+
+def _requested_options(fake):
+    """Option contracts the fake gateway was asked to quote."""
+    return [c for batch in fake.ticker_requests for c in batch if c.secType != "STK"]
+
+
+def _count_requests(fake):
+    orig = fake.reqTickersAsync
+    fake.ticker_requests = []
+
+    async def counting(*cs):
+        fake.ticker_requests.append(cs)
+        return await orig(*cs)
+    fake.reqTickersAsync = counting
+
+
+def test_chain_asks_only_for_out_of_the_money_strikes(ib_engine):
+    eng, fake, md = ib_engine
+    _count_requests(fake)
+    spot = md.spot("SPY")
+    ch = eng.md.chain("SPY", 30, 50)
+    assert ch.quotes
+    for c in _requested_options(fake):
+        k = float(c.strike)
+        assert (k <= spot * 1.01) if c.right == "P" else (k >= spot * 0.99), (c.right, k)
+    # LEAPS chains still include deep in-the-money calls
+    fake.ticker_requests.clear()
+    leaps = eng.md.chain("SPY", 270, 670, Right.CALL, strike_pct=0.5)
+    assert any(q.contract.strike < spot * 0.9 for q in leaps.quotes)
+
+
+def test_chains_are_reused_for_scanning_but_not_same_day(ib_engine):
+    eng, fake, md = ib_engine
+    _count_requests(fake)
+    a = eng.md.chain("SPY", 30, 50)
+    n = len(fake.ticker_requests)
+    b = eng.md.chain("SPY", 30, 50)
+    assert b is a and len(fake.ticker_requests) == n  # no new quote requests
+    eng.md.s.cfg.chain_cache_s = 0
+    assert eng.md.chain("SPY", 30, 50) is not a
+
+
+def test_unanswered_request_skips_the_cycle_fast(ib_engine):
+    import asyncio
+    import time as _time
+    eng, fake, md = ib_engine
+
+    async def hang(*cs):
+        await asyncio.sleep(30)
+    fake.reqTickersAsync = hang
+    eng.md.s.cfg.timeout_s = 1
+    t0 = _time.monotonic()
+    out = eng.run_once(force=True)
+    assert "didn't answer" in out["skipped"]
+    assert _time.monotonic() - t0 < 10  # one timeout, not one per strategy and ticker

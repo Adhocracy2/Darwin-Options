@@ -7,6 +7,7 @@ That works the same from the CLI, the trading loop and the web server's worker t
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import math
 import threading
@@ -25,6 +26,11 @@ class PaperAccountMismatch(RuntimeError):
 
 class GatewayUnavailable(ConnectionError):
     """IB Gateway isn't reachable. Darwin keeps running; IBKR calls fail fast until it's back."""
+
+
+class GatewayNotAnswering(GatewayUnavailable):
+    """Connected, but a request got no answer in time (gateway overloaded, or its session is
+    stuck). The cycle is skipped instead of waiting out one timeout after another."""
 
 
 RETRY_S = 30  # while the gateway is down, try to reconnect at most this often
@@ -103,7 +109,12 @@ class IBSession:
             return await make_coro()
 
         fut = asyncio.run_coroutine_threadsafe(runner(), self.loop)
-        return fut.result(timeout or self.cfg.timeout_s)
+        wait = timeout or self.cfg.timeout_s
+        try:
+            return fut.result(wait)
+        except (TimeoutError, concurrent.futures.TimeoutError):
+            fut.cancel()  # stop sending the rest of this request's market data calls
+            raise GatewayNotAnswering(f"IB Gateway is connected but didn't answer within {wait:.0f}s") from None
 
     async def _ensure_connected(self) -> None:
         """Connect, or fail fast with GatewayUnavailable if a recent attempt failed.

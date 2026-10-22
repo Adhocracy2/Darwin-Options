@@ -1,8 +1,13 @@
 """Interactive Brokers market data: stock prices, option chains with model greeks.
 
-IBKR limits how many quotes you can request at once, so chains are narrowed before
-any quotes are fetched: only the nearest `max_expiries` expiries in the DTE range,
-and only strikes whose estimated delta is between 0.03 and 0.97.
+IBKR limits how many quotes you can request at once, and every quote request leaves work
+behind in IB Gateway, so chains are kept small before any quotes are fetched:
+- only the nearest `max_expiries` expiries in the DTE range
+- only out-of-the-money strikes (plus ~1% around the price): puts at or below, calls at or
+  above. The strategies only sell out-of-the-money options. LEAPS chains (180+ days) keep
+  in-the-money calls, which LEAPS calls need.
+- only strikes whose estimated delta is at least 0.03 (0.005 for same-day: wings are far out)
+- a fetched chain is reused for `chain_cache_s` (not same-day chains)
 
 Open interest isn't requested (it needs a streaming subscription per contract), so
 the open-interest filter is skipped on IBKR. The bid/ask spread filter still applies.
@@ -11,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from datetime import date, datetime
 
 from ..broker.base import NY
@@ -41,6 +47,7 @@ class IBKRMarketData:
         self.s = session
         self.r = risk_free_rate
         self._stocks: dict[str, object] = {}
+        self._chains: dict[tuple, tuple[float, Chain]] = {}
 
     def today(self) -> date:
         return datetime.now(NY).date()
@@ -77,10 +84,24 @@ class IBKRMarketData:
 
     def chain(self, symbol: str, dte_min: int, dte_max: int, right: Right | None = None,
               strike_pct: float = 0.35) -> Chain:
+        key = (symbol, dte_min, dte_max, right, strike_pct, self.today())
+        hit = self._chains.get(key)
+        if hit and dte_max > 0 and time.monotonic() - hit[0] < self.s.cfg.chain_cache_s:
+            return hit[1]
+        ch = self._fetch_chain(symbol, dte_min, dte_max, right, strike_pct)
+        self._chains = {k: v for k, v in self._chains.items() if k[-1] == key[-1]}  # drop other days
+        self._chains[key] = (time.monotonic(), ch)
+        return ch
+
+    def _fetch_chain(self, symbol: str, dte_min: int, dte_max: int, right: Right | None,
+                     strike_pct: float) -> Chain:
         today = self.today()
         spot = self.spot(symbol)
         rv = pricing.realized_vol(self.closes(symbol))
         sigma = max(rv or 0.2, 0.12) * 1.3  # generous, only used to drop far strikes
+
+        keep_itm = dte_min >= 180  # LEAPS calls are bought deep in the money
+        min_delta = 0.005 if dte_max == 0 else 0.03
 
         async def go():
             stk = await self._stock(symbol)
@@ -97,8 +118,11 @@ class IBKRMarketData:
                     oc = OptionContract.from_occ(occ)
                     if abs(oc.strike - spot) / spot > strike_pct:
                         continue
+                    itm = (oc.strike > spot * 1.01) if oc.right is Right.PUT else (oc.strike < spot * 0.99)
+                    if itm and not keep_itm:
+                        continue
                     d = abs(pricing.greeks(spot, oc.strike, t, self.r, sigma, oc.right)["delta"])
-                    if 0.03 <= d <= 0.97:
+                    if min_delta <= d <= 0.97:
                         ib_contracts[occ] = c
             syms = list(ib_contracts)
             tickers = await self._tickers([ib_contracts[s] for s in syms])

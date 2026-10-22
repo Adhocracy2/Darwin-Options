@@ -120,6 +120,15 @@ deploys to AI1 once its runner is online, so only push tested work there.
 
 ## Findings worth remembering
 
+- **Don't flood IB Gateway with quote requests.** On 2026-10-22/23 every cycle requested thousands
+  of option snapshots (5 chains × 3 tickers, both sides of the money); by midnight the gateway had
+  ~56k orphaned market-data entries and stopped answering anything, and deploys hit systemd's
+  5-minute stop timeout (trader SIGKILLed mid-cycle). Now: only out-of-the-money strikes (LEAPS
+  chains excepted), chains reused for `ibkr.chain_cache_s` (600s; same-day never), and an
+  unanswered request raises `GatewayNotAnswering` and skips the rest of the cycle.
+- AI1 runs the **desktop IB Gateway** (~/Jts, logged in by hand, paper port 4002), not the Docker
+  one in deploy/ib-gateway. Its auto-restart/log-off time and memory (-Xmx768m) matter.
+
 - Simulations here use a synthetic market where no strategy is profitable; use it to compare
   settings, never to predict profit.
 - $1-wide spreads lose to commissions (~$2.60 round trip vs ~$15–20 credit). With $10k and the

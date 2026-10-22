@@ -119,6 +119,8 @@ class Engine:
                     continue
                 try:
                     out.extend(strat.generate(sym, ctx))
+                except GatewayUnavailable:
+                    raise  # gateway down or not answering: skip the cycle, don't time out per strategy
                 except Exception as e:
                     log.exception("scan %s/%s failed", strat.name, sym)
                     self.store.event("error", f"scan {strat.name} {sym}: {e}")
@@ -221,6 +223,8 @@ class Engine:
                 action = self.manager.evaluate(pos, quotes, self.md.spot(pos.underlying), today, self.now())
                 if action and (self.try_roll(pos, action) or self.close_legs(pos, action)):
                     done.append(action)
+            except GatewayUnavailable:
+                raise
             except Exception as e:
                 log.exception("manage %s failed", pos.id)
                 self.store.event("error", f"manage {pos.id}: {e}", pos.id)

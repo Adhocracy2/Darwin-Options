@@ -94,6 +94,7 @@ class RecordingMarketData:
     def __init__(self, md, recorder: Recorder):
         self.md, self.rec = md, recorder
         self._last_spot: dict[str, float] = {}
+        self._recorded: list[Chain] = []
 
     def __getattr__(self, name):
         return getattr(self.md, name)
@@ -115,6 +116,9 @@ class RecordingMarketData:
     def chain(self, symbol: str, dte_min: int, dte_max: int, right: Right | None = None,
               strike_pct: float = 0.35) -> Chain:
         ch = self.md.chain(symbol, dte_min, dte_max, right, strike_pct)
+        if any(c is ch for c in self._recorded):  # a reused (cached) chain: already saved
+            return ch
+        self._recorded = (self._recorded + [ch])[-50:]
         self._last_spot[symbol] = ch.spot
         self.rec.spot(symbol, ch.spot)  # chains fetch price and history internally, past this wrapper
         self.rec.realized_vol(symbol, ch.realized_vol)
