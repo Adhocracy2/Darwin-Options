@@ -70,6 +70,7 @@ class IBSession:
         self.last_error: str | None = None
         self._next_retry = 0.0
         self.loop = asyncio.new_event_loop()
+        self._connect_lock = asyncio.Lock()  # used only on self.loop
         threading.Thread(target=self.loop.run_forever, name="ib-loop", daemon=True).start()
         try:  # connect now so config errors show up early
             self.call(lambda: asyncio.sleep(0))
@@ -105,7 +106,11 @@ class IBSession:
         """Run `make_coro()` on the IB loop and return its result. Reconnects if needed."""
         async def runner():
             if not self.connected:
-                await self._ensure_connected()
+                # One connection attempt at a time: concurrent dashboard requests used to each
+                # connect with the same client id, and the loser kept that id busy for good.
+                async with self._connect_lock:
+                    if not self.connected:
+                        await self._ensure_connected()
             return await make_coro()
 
         fut = asyncio.run_coroutine_threadsafe(runner(), self.loop)

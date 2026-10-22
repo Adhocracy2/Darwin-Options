@@ -318,3 +318,36 @@ def test_unanswered_request_skips_the_cycle_fast(ib_engine):
     out = eng.run_once(force=True)
     assert "didn't answer" in out["skipped"]
     assert _time.monotonic() - t0 < 10  # one timeout, not one per strategy and ticker
+
+
+def test_concurrent_requests_connect_once(cfg, monkeypatch):
+    """Dashboard requests arrive on several threads at once; only one may connect (same client id)."""
+    import asyncio
+    import threading
+    from types import SimpleNamespace as NS
+
+    connects = []
+
+    async def slow_connect(self):
+        connects.append(1)
+        await asyncio.sleep(0.2)
+        self.ib = NS(isConnected=lambda: True)
+        self.account = "DU1"
+    monkeypatch.setattr(IBSession, "_connect", slow_connect)
+    monkeypatch.setattr(IBSession, "__init__", lambda self, c, live: None)
+    s = IBSession(cfg.ibkr, False)
+    s.cfg, s.live, s.ib, s.account = cfg.ibkr, False, None, ""
+    s.last_error, s._next_retry, s._contracts = None, 0.0, {}
+    s.loop = asyncio.new_event_loop()
+    s._connect_lock = asyncio.Lock()
+    threading.Thread(target=s.loop.run_forever, daemon=True).start()
+
+    async def ping():
+        return "ok"
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(s.call(ping))) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert results == ["ok"] * 5 and len(connects) == 1
