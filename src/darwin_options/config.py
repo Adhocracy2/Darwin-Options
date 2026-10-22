@@ -217,6 +217,13 @@ class IBKRConfig:
 
 
 @dataclass
+class RecordConfig:
+    """Save every price received from IBKR to a separate database, for replays and history."""
+    enabled: bool = True
+    path: str = "var/marketdata.db"
+
+
+@dataclass
 class Config:
     mode: str = "paper"  # sim | paper | live  (broker is always Interactive Brokers)
     data: str = "ibkr"  # ibkr | synthetic (offline testing, sim mode only)
@@ -240,6 +247,7 @@ class Config:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     ibkr: IBKRConfig = field(default_factory=IBKRConfig)
     rolling: RollingConfig = field(default_factory=RollingConfig)
+    record: RecordConfig = field(default_factory=RecordConfig)
 
     def validate(self) -> None:
         if self.mode not in {"sim", "paper", "live"}:

@@ -39,7 +39,9 @@ renamed. Don't reintroduce "flick" names.
 ## Architecture (src/darwin_options)
 
 - `strategies/`: credit_spread, iron_condor, iron_butterfly, calendar, leaps_call (poor man's
-  covered call). Registry in `strategies/__init__.py`. Shared pricing in `strategies/common.py`.
+  covered call), zero_dte (same-day SPY spreads/condors; off by default; entries 10:00–13:30 NY,
+  forced exit at `management.overrides.zero_dte.close_by_time` 15:30; refuses delayed quotes and
+  half-days; valued by hours via `clock.py` + `analysis.evaluate_intraday`). Registry in `strategies/__init__.py`. Shared pricing in `strategies/common.py`.
 - `analysis.py`: expected value / probability of profit. Lognormal model with forecast vol =
   blend of IV and 30-day realized vol; trades valued at the **planned exit** (close-at-DTE), legs
   repriced at their IV, never below intrinsic (American options); subtracts commissions and
@@ -54,11 +56,17 @@ renamed. Don't reintroduce "flick" names.
 - `ibkr.py`, `data/ibkr.py`, `broker/ibkr.py`: ib_async on its own event-loop thread. Runs without IB Gateway: connect failures raise `GatewayUnavailable` (retry every 30s), cycles are skipped, the API returns 503 and `/api/status` reports `gateway`. Combos are
   BUY at a negative price for a credit. `broker/sim.py`: local simulator. `data/synthetic.py`:
   offline fake market (P&L meaningless).
-- `settings.py`: dashboard-editable strategy on/off and exit rules, stored in the DB.
+- `settings.py`: dashboard-editable strategy on/off, exit rules and tickers (on/off, add new),
+  stored in the DB and applied to `cfg.universe` each cycle.
+- `recorder.py`: every price from IBKR (spots, option quotes with greeks, realized vol, daily closes)
+  is also saved to `var/marketdata.db` (`record:` in config). `ReplayMarketData` serves it back as
+  of a time; `replay.py` / `darwin replay` reruns the engine on it with the sim broker and a fresh
+  journal under `var/replays/`. `darwin data` shows totals. Replays: daily limits use the real clock,
+  so pilot is off in replays.
 - `review.py`: trade review; suggests changes only with 20+ trades per group and ~2 standard errors.
 - `payoff.py`: payoff diagrams. `ibkr_check.py`: `darwin ibkr-check` places an unfillable combo
   and cancels it to prove the order path.
-- `api/app.py`: FastAPI for the UI. `cli.py`: `darwin check|scan|run|loop|serve|positions|report|review|ibkr-check|close`.
+- `api/app.py`: FastAPI for the UI. `cli.py`: `darwin check|scan|run|loop|serve|positions|report|review|ibkr-check|close|data|replay`.
 
 ## Deploy (CI/CD)
 
@@ -78,19 +86,25 @@ renamed. Don't reintroduce "flick" names.
 
 ```bash
 python -m pyflakes src tests
-pytest -q                          # ~105 tests, ~40s
+pytest -q                          # ~123 tests, ~40s
 cd ui && npx tsc -b && npm run build
 ```
 
-Don't pipe pytest into `tail` and then chain `&&`: the exit code is lost. Pushing to `main`
+Don't pipe pytest into `tail` and then chain `&&`: the exit code is lost. On AI1 there's no dev venv:
+use `PYTHONPATH=src ~/darwin/current/.venv/bin/python -m pytest -q`. Without `PYTHONPATH=src` the
+tests silently run against the deployed release, not your edits. Pushing to `main`
 deploys to AI1 once its runner is online, so only push tested work there.
 
-## Current state (2026-10-22)
+## Current state (2026-10-22, evening AEST)
 
-- All code is on `main`. CI passed on GitHub. A deploy run is queued, waiting for AI1's runner.
-- **Not yet done on AI1:** `scripts/setup-pc.sh`, IB Gateway login, `darwin ibkr-check`.
-- **Never tested against a real IB Gateway.** Everything IBKR-side was tested with a fake gateway.
-  Expect fixes on first contact; watch the first paper orders in TWS / IBKR Mobile.
+- AI1 is set up: services run under systemd, deploys work, IB Gateway is logged in to paper
+  account DUR295184 (AUD base currency). The trader ran its first market-hours cycles.
+- No OPRA subscription yet: `ibkr.market_data_type: 3` (delayed) in shared config. 0DTE refuses
+  to trade on delayed data.
+- First contact found: bogus strike requests (fixed: `listed_options`) and log spam from repeated
+  delayed-data notices (now logged once).
+- Local commits after 8895544 (chain fix, 0DTE, tickers, recording) were not pushed at the time of
+  writing; check `git status` / `git log origin/main..`.
 - **Never tested on real systemd:** service restart and deploy rollback (the build sandbox had no systemd).
 - `Booger-Flick` cleanup: the owner was asked to delete branch `ccr-13b4f904-k46h0h` there by hand.
 

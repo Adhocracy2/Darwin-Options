@@ -7,6 +7,12 @@
 mode: paper
 data: ibkr                # ibkr | synthetic (offline testing, sim mode only)
 
+record:
+  # Save every price received from IBKR (stock prices, option bid/ask/IV/greeks) to a separate
+  # database for `darwin replay` and history. Tens of MB per trading day. `darwin data` shows totals.
+  enabled: true
+  path: var/marketdata.db
+
 ibkr:
   host: 127.0.0.1
   port: 4002              # IB Gateway: 4002 paper, 4001 live. TWS: 7497 paper, 7496 live

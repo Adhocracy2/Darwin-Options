@@ -97,8 +97,13 @@ class Engine:
 
     # ---- scanning ------------------------------------------------------------
 
+    def now(self):
+        """New York time for intraday rules. Replays supply their own clock; None = the real one."""
+        f = getattr(self.md, "clock_now", None)
+        return f() if f else None
+
     def scan(self, symbols: list[str] | None = None) -> list[Candidate]:
-        ctx = StrategyContext(self.cfg, ScanCache(self.md), self.store.positions("open"), self.md.today())
+        ctx = StrategyContext(self.cfg, ScanCache(self.md), self.store.positions("open"), self.md.today(), self.now())
         out: list[Candidate] = []
         for sym in symbols or self.cfg.universe:
             for strat in self.strategies:
@@ -203,7 +208,7 @@ class Engine:
         for pos in self.store.positions("open"):
             try:
                 quotes = self.md.quotes([l.symbol for l in pos.open_legs])
-                action = self.manager.evaluate(pos, quotes, self.md.spot(pos.underlying), today)
+                action = self.manager.evaluate(pos, quotes, self.md.spot(pos.underlying), today, self.now())
                 if action and (self.try_roll(pos, action) or self.close_legs(pos, action)):
                     done.append(action)
             except Exception as e:
@@ -221,7 +226,7 @@ class Engine:
         acct = self.broker.account()
         state = self.risk_state(acct.equity)
         positions = self.store.positions("open")
-        ctx = StrategyContext(self.cfg, ScanCache(self.md), positions, self.md.today())
+        ctx = StrategyContext(self.cfg, ScanCache(self.md), positions, self.md.today(), self.now())
         roll, why = find_roll(pos, action.reason, ctx, self.gate, positions, acct.buying_power, state)
         if roll is None:
             self.store.event("roll_skipped", f"not rolled ({why}); closing instead", pos.id)

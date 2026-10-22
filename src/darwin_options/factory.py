@@ -20,6 +20,10 @@ def build_engine(cfg: Config, store: Store | None = None) -> Engine:
 
         session = IBSession(cfg.ibkr, live=cfg.mode == "live")
         md = IBKRMarketData(session, cfg.risk_free_rate)
+        if cfg.record.enabled:
+            from .recorder import Recorder, RecordingMarketData
+
+            md = RecordingMarketData(md, Recorder(cfg.record.path))
 
     if cfg.mode == "sim":
         from .broker.sim import SimBroker

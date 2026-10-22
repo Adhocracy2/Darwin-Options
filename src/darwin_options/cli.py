@@ -1,4 +1,4 @@
-"""Command line: darwin check | scan | run | loop | serve | positions | report | close."""
+"""Command line: darwin check | scan | run | loop | serve | positions | report | close | data | replay."""
 from __future__ import annotations
 
 import argparse
@@ -85,6 +85,11 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("ibkr-check", help="test the IBKR paper-trading path: connect, data, place + cancel an unfillable order")
     cl = sub.add_parser("close", help="close a position now")
     cl.add_argument("position_id")
+    sub.add_parser("data", help="show how much market data has been recorded")
+    rp = sub.add_parser("replay", help="rerun the trader on recorded market data with the local simulator")
+    rp.add_argument("--from", dest="start", help="first day, YYYY-MM-DD (default: all)")
+    rp.add_argument("--to", dest="end", help="last day, YYYY-MM-DD")
+    rp.add_argument("--journal", default=None, help="journal file for the replay (default: a new file in var/replays)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -110,6 +115,18 @@ def main(argv: list[str] | None = None) -> None:
         ok = all(st.ok for st in steps) and len(steps) >= 5
         print("\nIBKR paper trading path works." if ok else "\nIBKR check did not pass; see the failures above.")
         raise SystemExit(0 if ok else 1)
+
+    if args.cmd == "data":
+        from .recorder import summary
+
+        print(json.dumps(summary(cfg.record.path), indent=2))
+        return
+
+    if args.cmd == "replay":
+        from .replay import replay
+
+        print(json.dumps(replay(cfg, args.start, args.end, args.journal, log), indent=2, default=str))
+        return
 
     if args.cmd == "review":  # reads the journal only; no broker connection needed
         from .review import review
