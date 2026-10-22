@@ -9,7 +9,8 @@
 # Approve the first login on the IBKR mobile app (two-factor) if prompted.
 services:
   ib-gateway:
-    image: ghcr.io/gnzsnz/ib-gateway:stable
+    # Multi-arch (amd64 + arm64), so it also runs on ARM servers such as Oracle Cloud Ampere A1.
+    image: gnzsnz/ib-gateway:stable
     restart: always
     environment:
       TWS_USERID: ${TWS_USERID}
