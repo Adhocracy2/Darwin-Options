@@ -111,6 +111,8 @@ def example(strategy: str, today: date, exit_dte: int, r: float = 0.04, iv: floa
         "iron_butterfly": [(c(100, P, 40), -1), (c(100, C, 40), -1), (c(90, P, 40), 1), (c(110, C, 40), 1)],
         "calendar": [(c(100, P, 30), -1), (c(100, P, 65), 1)],
         "leaps_call": [(c(80, C, 400), 1), (c(106, C, 35), -1)],
+        # same-day condor; priced with 1 day left because this diagram works in whole days
+        "zero_dte": [(c(99, P, 1), -1), (c(97, P, 1), 1), (c(101, C, 1), -1), (c(103, C, 1), 1)],
     }
     legs = [PayoffLeg(k, q, iv) for k, q in shapes[strategy]]
     credit = -sum(l.qty * _value(l, 100.0, today, r) for l in legs) * MULTIPLIER

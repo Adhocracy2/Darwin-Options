@@ -52,6 +52,7 @@ STRATEGY_FIELDS: dict[str, list[str]] = {
     "iron_butterfly": ["take_profit_pct", "stop_loss_mult", *_SHORT_GUARDS],
     "calendar": ["take_profit_pct", "debit_stop_loss_pct", *_SHORT_GUARDS],
     "leaps_call": ["take_profit_pct", *_SHORT_GUARDS, "leaps_close_at_dte", "leaps_stop_loss_pct"],
+    "zero_dte": ["take_profit_pct", "stop_loss_mult", "min_short_extrinsic", "check_threatened", "itm_buffer_pct"],
 }
 
 INFO = {
@@ -60,6 +61,8 @@ INFO = {
     "iron_butterfly": ("Iron butterfly", "Short at-the-money straddle with wings. Max loss = wing width − credit."),
     "calendar": ("Calendar", "Short front month, long back month at one strike. Max loss = debit paid."),
     "leaps_call": ("LEAPS calls", "Short calls written against a long LEAPS call. Max loss = net debit."),
+    "zero_dte": ("0DTE", "Same-day credit spreads / iron condors, closed by 15:30 New York. "
+                 "Needs live quotes. Max loss = width − credit."),
 }
 
 SETTINGS_KEY = "ui_settings"

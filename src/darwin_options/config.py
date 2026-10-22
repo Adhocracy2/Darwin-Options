@@ -74,6 +74,29 @@ class LeapsCallConfig:
 
 
 @dataclass
+class ZeroDTEConfig:
+    """Same-day expiry (0DTE) credit spreads and iron condors, opened and closed the same day.
+
+    Off by default. Untested with real money. Prices move fast on the last day, so it only
+    trades on live quotes (ibkr.market_data_type: 1), never on 15-minute-delayed ones."""
+    enabled: bool = False
+    symbols: list[str] = field(default_factory=lambda: ["SPY"])  # need an expiry every trading day
+    structures: list[str] = field(default_factory=lambda: ["iron_condor", "put_spread", "call_spread"])
+    short_delta_min: float = 0.05  # far out of the money: small credit, high win rate
+    short_delta_max: float = 0.15
+    widths: list[float] = field(default_factory=lambda: [2.0, 3.0, 5.0])
+    min_credit_pct_of_width: float = 0.05
+    min_otm_pct: float = 0.004
+    # Far protective legs on the last day are often bid only a cent or two, so they get a
+    # looser check than filters.min_bid; short legs still pass the normal filters.
+    long_min_bid: float = 0.01
+    long_max_spread: float = 0.05  # dollars  # short strike at least 0.4% from the price
+    entry_start: str = "10:00"  # New York time; skips the opening swings
+    entry_end: str = "13:30"  # later entries collect too little for the risk left
+    require_live_data: bool = True
+
+
+@dataclass
 class FilterConfig:
     min_open_interest: int = 100
     max_leg_spread_pct: float = 0.15  # (ask-bid)/mid per leg
@@ -140,12 +163,19 @@ class ManagementConfig:
     leaps_stop_loss_pct: float = 0.40  # close PMCC if down this much of the debit paid
     debit_stop_loss_pct: float = 0.50  # debit trades (calendars): close if down this much of the debit
     check_threatened: bool = True  # close when a short strike is at/near the money
+    # Same-day expiries only: close everything at this New York time ("HH:MM") on expiry day,
+    # instead of the day-based rules above, which would close a 0DTE trade as soon as it opens.
+    close_by_time: str | None = None
     # Per-strategy changes to any of the settings above. YAML entries are merged into these.
     overrides: dict = field(default_factory=lambda: {
         # Short strikes start at the money, so "threatened" doesn't apply; assignment is
         # still guarded by the extrinsic-value and DTE checks.
         "iron_butterfly": {"take_profit_pct": 0.25, "check_threatened": False},
         "calendar": {"take_profit_pct": 0.25, "close_at_dte": 5, "check_threatened": False},
+        # 0DTE: out by 15:30 New York, tighter stop, and a smaller threatened buffer because
+        # the shorts start only ~0.5-1% out of the money.
+        "zero_dte": {"take_profit_pct": 0.50, "stop_loss_mult": 1.5, "close_at_dte": 0,
+                     "close_by_time": "15:30", "itm_buffer_pct": 0.002},
     })
 
     def for_strategy(self, name: str) -> "ManagementConfig":
@@ -203,6 +233,7 @@ class Config:
     iron_butterfly: IronButterflyConfig = field(default_factory=IronButterflyConfig)
     calendar: CalendarConfig = field(default_factory=CalendarConfig)
     leaps_call: LeapsCallConfig = field(default_factory=LeapsCallConfig)
+    zero_dte: ZeroDTEConfig = field(default_factory=ZeroDTEConfig)
     filters: FilterConfig = field(default_factory=FilterConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     management: ManagementConfig = field(default_factory=ManagementConfig)

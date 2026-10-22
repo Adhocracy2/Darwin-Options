@@ -6,10 +6,10 @@ so P&L from it means nothing.
 from __future__ import annotations
 
 import math
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from ..models import Chain, OptionContract, OptionQuote, Right
-from .. import pricing
+from .. import clock, pricing
 
 DEFAULT_SPOTS = {"SPY": 500.0, "QQQ": 430.0, "IWM": 200.0}
 
@@ -17,13 +17,15 @@ DEFAULT_SPOTS = {"SPY": 500.0, "QQQ": 430.0, "IWM": 200.0}
 class SyntheticMarketData:
     def __init__(self, spots: dict[str, float] | None = None, base_iv: float = 0.20,
                  realized: float = 0.15, today: date | None = None, r: float = 0.04,
-                 half_spread_pct: float = 0.03):
+                 half_spread_pct: float = 0.03, strike_step: float | None = None):
         self.spots = dict(spots or DEFAULT_SPOTS)
         self.base_iv = base_iv
         self.realized = realized
         self._today = today or date.today()
         self.r = r
         self.half_spread_pct = half_spread_pct
+        self.strike_step = strike_step  # None = $1 under $300, else $5
+        self.now: datetime | None = None  # New York time for same-day expiries; None = real clock
 
     def today(self) -> date:
         return self._today
@@ -48,7 +50,8 @@ class SyntheticMarketData:
 
     def _quote(self, c: OptionContract) -> OptionQuote:
         s = self.spot(c.underlying)
-        t = max(c.dte(self._today), 0) / 365
+        dte = c.dte(self._today)
+        t = max(dte, 0) / 365 if dte != 0 else clock.years_to_expiry(c.expiry, self.now)
         iv = self._iv(s, c.strike)
         theo = pricing.bs_price(s, c.strike, t, self.r, iv, c.right)
         half = max(0.01, theo * self.half_spread_pct)
@@ -60,7 +63,7 @@ class SyntheticMarketData:
     def chain(self, symbol: str, dte_min: int, dte_max: int, right: Right | None = None,
               strike_pct: float = 0.35) -> Chain:
         s = self.spot(symbol)
-        step = 1.0 if s < 300 else 5.0
+        step = self.strike_step or (1.0 if s < 300 else 5.0)
         strikes = [step * k for k in range(int(s * (1 - strike_pct) / step), int(s * (1 + strike_pct) / step) + 1)]
         # Fridays only
         first = self._today + timedelta(days=(4 - self._today.weekday()) % 7)

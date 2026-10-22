@@ -8,11 +8,11 @@ never held into expiration.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from .config import Config
 from .models import MULTIPLIER, OptionQuote, Position
-from . import analysis
+from . import analysis, clock
 
 
 @dataclass
@@ -28,13 +28,18 @@ class PositionManager:
         self.cfg = cfg
 
     def _short_leg_risk(self, pos: Position, quotes: dict[str, OptionQuote], spot: float,
-                        today: date) -> tuple[str, bool] | None:
+                        today: date, now: datetime | None = None) -> tuple[str, bool] | None:
         m = self.cfg.management.for_strategy(pos.strategy)
         for leg in pos.open_legs:
             if leg.qty >= 0:
                 continue
             c = leg.contract
-            if c.dte(today) <= 1:
+            same_day = m.close_by_time is not None and c.dte(today) == 0
+            if same_day:
+                cutoff = clock.at(today, clock.parse_hhmm(m.close_by_time))
+                if (now or clock.now_ny()) >= cutoff:
+                    return f"same-day close: {c.symbol} at {m.close_by_time} New York", True
+            elif c.dte(today) <= 1:
                 return f"expiry: {c.symbol} expires in {c.dte(today)}d", True
             if m.check_threatened and analysis.otm_pct(spot, c.strike, c.right) < m.itm_buffer_pct:
                 return f"short strike threatened: {c.symbol} vs spot {spot:.2f}", True
@@ -43,20 +48,20 @@ class PositionManager:
                 intrinsic = c.intrinsic(spot)
                 if intrinsic > 0 and q.mid - intrinsic < m.min_short_extrinsic:
                     return f"assignment risk: {c.symbol} extrinsic {q.mid - intrinsic:.2f}", True
-            if c.dte(today) <= m.close_at_dte:
+            if not same_day and c.dte(today) <= m.close_at_dte:
                 return f"dte exit: {c.symbol} at {c.dte(today)}d", False
         return None
 
     def evaluate(self, pos: Position, quotes: dict[str, OptionQuote], spot: float,
-                 today: date) -> ExitAction | None:
+                 today: date, now: datetime | None = None) -> ExitAction | None:
         if pos.strategy == "leaps_call":
             return self._leaps_call(pos, quotes, spot, today)
-        return self._defined_risk(pos, quotes, spot, today)
+        return self._defined_risk(pos, quotes, spot, today, now)
 
-    def _defined_risk(self, pos: Position, quotes, spot, today) -> ExitAction | None:
+    def _defined_risk(self, pos: Position, quotes, spot, today, now=None) -> ExitAction | None:
         m = self.cfg.management.for_strategy(pos.strategy)
         all_open = [l.symbol for l in pos.open_legs]
-        if risk := self._short_leg_risk(pos, quotes, spot, today):
+        if risk := self._short_leg_risk(pos, quotes, spot, today, now):
             return ExitAction(pos.id, all_open, risk[0], risk[1])
         if not any(l.qty < 0 for l in pos.open_legs):
             return ExitAction(pos.id, all_open, "orphan long legs after partial close")

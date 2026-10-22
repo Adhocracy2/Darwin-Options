@@ -59,6 +59,20 @@ def evaluate(legs: list[Leg], net_credit: float, spot: float, today: date, sigma
     first = min(l.contract.expiry for l in legs)
     horizon = max(first - timedelta(days=max(exit_dte, 0)), today + timedelta(days=1))
     t = (horizon - today).days / 365
+    return _expected(legs, net_credit, spot, sigma, r, leg_ivs, t,
+                     {l.contract.symbol: (l.contract.expiry - horizon).days / 365 for l in legs})
+
+
+def evaluate_intraday(legs: list[Leg], net_credit: float, spot: float, sigma: float, r: float,
+                      leg_ivs: dict[str, float], t_exit: float, t_left_at_exit: float) -> tuple[float, float]:
+    """Same as `evaluate`, for same-day trades measured in years: `t_exit` from now to the
+    planned exit, and `t_left_at_exit` from the exit to expiry (all legs share one expiry)."""
+    return _expected(legs, net_credit, spot, sigma, r, leg_ivs, t_exit,
+                     {l.contract.symbol: t_left_at_exit for l in legs})
+
+
+def _expected(legs: list[Leg], net_credit: float, spot: float, sigma: float, r: float,
+              leg_ivs: dict[str, float], t: float, remaining: dict[str, float]) -> tuple[float, float]:
     ev = pop = wsum = 0.0
     for z in _Z:
         w = math.exp(-0.5 * z * z)
@@ -66,7 +80,7 @@ def evaluate(legs: list[Leg], net_credit: float, spot: float, today: date, sigma
         value = 0.0
         for l in legs:
             c = l.contract
-            rem = (c.expiry - horizon).days / 365
+            rem = remaining[c.symbol]
             if rem <= 0:
                 v = c.intrinsic(s_t)
             else:

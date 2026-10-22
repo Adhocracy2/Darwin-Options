@@ -5,7 +5,7 @@ from datetime import date
 from typing import Protocol
 
 from ..models import Chain, OptionQuote, Right
-from .. import pricing
+from .. import clock, pricing
 
 
 class MarketData(Protocol):
@@ -23,7 +23,9 @@ class MarketData(Protocol):
 
 def enrich(q: OptionQuote, spot: float, r: float, today: date) -> OptionQuote:
     """Fill in IV and greeks from the mid price when the feed doesn't supply them."""
-    t = max(q.contract.dte(today), 0) / 365
+    dte = q.contract.dte(today)
+    # same-day expiry: hours left matter (0 days would make IV and greeks meaningless)
+    t = max(dte, 0) / 365 if dte != 0 else clock.years_to_expiry(q.contract.expiry)
     if q.iv is None and q.mid > 0:
         q.iv = pricing.implied_vol(q.mid, spot, q.contract.strike, t, r, q.contract.right)
     if q.delta is None and q.iv:

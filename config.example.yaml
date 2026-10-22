@@ -68,6 +68,21 @@ leaps_call:
   short_delta_min: 0.15
   short_delta_max: 0.30
 
+zero_dte:
+  # Same-day (0DTE) credit spreads / iron condors on SPY. Opened 10:00-13:30 and always
+  # closed by 15:30 New York (management.overrides.zero_dte.close_by_time). Skips half-days.
+  # Off by default and untested with real money. Needs live option quotes
+  # (ibkr.market_data_type: 1, an OPRA subscription); it won't trade on delayed quotes.
+  # In pilot mode it only trades if added to risk.pilot_strategies.
+  enabled: false
+  symbols: [SPY]
+  structures: [iron_condor, put_spread, call_spread]
+  short_delta_min: 0.05
+  short_delta_max: 0.15
+  widths: [2, 3, 5]
+  entry_start: "10:00"
+  entry_end: "13:30"
+
 filters:
   min_open_interest: 100
   max_leg_spread_pct: 0.15

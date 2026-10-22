@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
 from ..config import Config
@@ -15,6 +15,7 @@ class StrategyContext:
     md: MarketData
     positions: list[Position]  # open positions
     today: date
+    now: datetime | None = None  # New York time; None = the real clock
 
 
 class Strategy(Protocol):
