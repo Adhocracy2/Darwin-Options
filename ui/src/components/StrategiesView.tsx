@@ -6,6 +6,7 @@ import { api } from "../api";
 /** Local edit state. Numbers are kept as the text typed, in display units (e.g. "50" for 50%). */
 type Draft = {
   allow_new_entries: boolean;
+  tickers: { symbol: string; enabled: boolean }[];
   strategies: Record<string, { enabled: boolean; exit: Record<string, string | boolean> }>;
 };
 
@@ -39,6 +40,7 @@ function fmt(meta: FieldMeta, v: number | boolean): string {
 function draftFrom(s: Settings): Draft {
   return {
     allow_new_entries: s.allow_new_entries,
+    tickers: s.tickers.map((t) => ({ symbol: t.symbol, enabled: t.enabled })),
     strategies: Object.fromEntries(s.strategies.map((st) => [st.name, {
       enabled: st.enabled,
       exit: Object.fromEntries(st.exit.map((f) => [f.key, toDisplay(s.fields[f.key], f.value)])),
@@ -71,6 +73,7 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [newTicker, setNewTicker] = useState("");
   const [payoffs, setPayoffs] = useState<Record<string, StrategyPayoff>>({});
   const [showHelp, setShowHelp] = useState<boolean>(() => {
     try { return localStorage.getItem("darwin.showHelp") === "1"; } catch { return false; }
@@ -105,12 +108,36 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
   const setField = (name: string, key: string, v: string | boolean) =>
     setStrategy(name, { exit: { ...draft.strategies[name].exit, [key]: v } });
 
+  const tickerInfo = Object.fromEntries(server.tickers.map((t) => [t.symbol, t]));
+  const setTicker = (symbol: string, enabled: boolean) =>
+    setDraft({ ...draft, tickers: draft.tickers.map((t) => (t.symbol === symbol ? { ...t, enabled } : t)) });
+  const removeTicker = (symbol: string) => setDraft({ ...draft, tickers: draft.tickers.filter((t) => t.symbol !== symbol) });
+  const tickerInputError = (() => {
+    const t = newTicker.trim().toUpperCase();
+    if (!t) return null;
+    if (!/^[A-Z]{1,5}$/.test(t)) return "1–5 letters, like XLF";
+    if (draft.tickers.some((x) => x.symbol === t)) return "Already in the list";
+    return null;
+  })();
+  const addTicker = () => {
+    const t = newTicker.trim().toUpperCase();
+    if (!t || tickerInputError) return;
+    setDraft({ ...draft, tickers: [...draft.tickers, { symbol: t, enabled: true }] });
+    setNewTicker("");
+  };
+
   const save = async () => {
     const turningOn = server.strategies.filter((s) => !s.enabled && draft.strategies[s.name].enabled).map((s) => s.label);
     if (live && !confirm(`This changes how LIVE trades are managed${turningOn.length ? ` and turns on ${turningOn.join(", ")}` : ""}. Save?`)) return;
     // Values equal to the config.yaml default are sent as "reset" so config.yaml stays the source of truth.
     const update: SettingsUpdate = { strategies: {} };
     if (draft.allow_new_entries !== server.allow_new_entries_default) update.allow_new_entries = draft.allow_new_entries;
+    // config.yaml tickers are sent only when switched off; added tickers are always sent (dropping one removes it).
+    const tickers: Record<string, boolean> = {};
+    for (const t of draft.tickers) {
+      if (tickerInfo[t.symbol]?.in_config ? !t.enabled : true) tickers[t.symbol] = t.enabled;
+    }
+    if (Object.keys(tickers).length) update.tickers = tickers;
     for (const st of server.strategies) {
       const d = draft.strategies[st.name];
       const entry: SettingsUpdate["strategies"][string] = {};
@@ -149,6 +176,37 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
           </div>
           <Switch checked={draft.allow_new_entries} label="New entries" onChange={(v) => setDraft({ ...draft, allow_new_entries: v })} />
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Tickers</h2>
+        <p className="muted small">Underlyings scanned for new trades. Switching one off stops new trades in it; open positions are still managed.</p>
+        <div className="tickers">
+          {draft.tickers.map((t) => {
+            const info = tickerInfo[t.symbol];
+            return (
+              <div className={`ticker ${t.enabled ? "on" : ""}`} key={t.symbol}>
+                <button type="button" role="switch" aria-checked={t.enabled} className="ticker-toggle"
+                        onClick={() => setTicker(t.symbol, !t.enabled)} title={t.enabled ? "On: click to switch off" : "Off: click to switch on"}>
+                  {t.symbol}
+                  {info?.open_positions ? <span className="badge">{info.open_positions} open</span> : null}
+                </button>
+                {!info?.in_config && (
+                  <button type="button" className="link ticker-remove" aria-label={`Remove ${t.symbol}`}
+                          onClick={() => removeTicker(t.symbol)}>×</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <form className="ticker-add" onSubmit={(e) => { e.preventDefault(); addTicker(); }}>
+          <input value={newTicker} placeholder="Add ticker, e.g. XLF" maxLength={5} aria-label="Add ticker"
+                 aria-invalid={!!tickerInputError} onChange={(e) => setNewTicker(e.target.value)} />
+          <button className="btn secondary" type="submit" disabled={!newTicker.trim() || !!tickerInputError}>Add</button>
+          {tickerInputError && <span className="small neg">{tickerInputError}</span>}
+        </form>
+        {!draft.tickers.some((t) => t.enabled) && <p className="small note">No tickers on: nothing new will be opened.</p>}
+        <p className="muted small">Pick ones with busy option markets (tight bid/ask). Strategies still skip trades that fail the liquidity filters.</p>
       </div>
 
       <div className="toolbar">

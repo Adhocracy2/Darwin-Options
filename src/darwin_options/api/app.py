@@ -57,8 +57,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         except GatewayUnavailable:
             account = None
         return {"mode": cfg.mode, "data": cfg.data, "broker": engine.broker.name,
-                "account": account, "gateway": engine.gateway(), "universe": cfg.universe,
-                "allow_new_entries": cfg.allow_new_entries,
+                "account": account, "gateway": engine.gateway(), "universe": engine.cfg.universe,
+                "allow_new_entries": engine.cfg.allow_new_entries,
                 "strategies": [s.name for s in engine.strategies]}
 
     @app.get("/api/config")
@@ -69,9 +69,11 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     def settings_view():
         overlay, _ = engine.store.get_setting(SETTINGS_KEY)
         counts: dict[str, int] = {}
+        by_ticker: dict[str, int] = {}
         for p in engine.store.positions("open"):
             counts[p.strategy] = counts.get(p.strategy, 0) + 1
-        return describe_settings(engine.cfg, engine.base_cfg, overlay, counts)
+            by_ticker[p.underlying] = by_ticker.get(p.underlying, 0) + 1
+        return describe_settings(engine.cfg, engine.base_cfg, overlay, counts, by_ticker)
 
     @app.get("/api/settings")
     def get_settings():

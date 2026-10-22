@@ -80,14 +80,17 @@ export type StrategySettings = {
   open_positions: number;
   exit: ExitField[];
 };
+export type TickerSetting = { symbol: string; enabled: boolean; in_config: boolean; open_positions: number };
 export type Settings = {
   allow_new_entries: boolean;
   allow_new_entries_default: boolean;
   strategies: StrategySettings[];
+  tickers: TickerSetting[];
   fields: Record<string, FieldMeta>;
 };
 export type SettingsUpdate = {
   allow_new_entries?: boolean;
+  tickers?: Record<string, boolean>;
   strategies: Record<string, { enabled?: boolean; exit?: Record<string, number | boolean | null> }>;
 };
 

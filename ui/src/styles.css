@@ -145,3 +145,15 @@ h3.small { margin: 12px 0 6px; }
 .note.halted { background: color-mix(in srgb, var(--critical) 14%, transparent); }
 .tiles.compact { margin: 12px 0; }
 .tiles.compact .value { font-size: 18px; }
+
+/* Tickers card */
+.tickers { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.ticker { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-1); }
+.ticker.on { border-color: var(--accent); }
+.ticker-toggle { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 6px 12px; font: inherit; font-weight: 600; color: var(--text-secondary); cursor: pointer; text-decoration: line-through; min-height: 36px; }
+.ticker.on .ticker-toggle { color: var(--accent); text-decoration: none; }
+.ticker-remove { padding: 0 10px 0 0; font-size: 18px; line-height: 1; }
+.ticker-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ticker-add input { width: 180px; max-width: 100%; text-transform: uppercase; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text-primary); font: inherit; padding: 6px 10px; }
+.ticker-add input:focus { outline: none; border-color: var(--accent); }
+.ticker-add input[aria-invalid="true"] { border-color: var(--critical); }

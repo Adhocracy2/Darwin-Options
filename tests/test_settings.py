@@ -86,3 +86,26 @@ def test_settings_api(engine):
 
     bad = client.put("/api/settings", json={"strategies": {"iron_condor": {"exit": {"take_profit_pct": 3}}}})
     assert bad.status_code == 400 and "between" in bad.json()["detail"]
+
+
+def test_tickers_validate():
+    assert validate({"tickers": {"xlf": True, "QQQ": False}})["tickers"] == {"XLF": True, "QQQ": False}
+    with pytest.raises(SettingsError, match="isn't a ticker"):
+        validate({"tickers": {"SPY; DROP": True}})
+    with pytest.raises(SettingsError, match="on or off"):
+        validate({"tickers": {"SPY": "yes"}})
+
+
+def test_tickers_switch_off_add_and_reset(engine):
+    base = list(engine.cfg.universe)
+    assert "QQQ" in base
+    engine.update_settings({"tickers": {"QQQ": False, "XLF": True, "GLD": False}})
+    assert "QQQ" not in engine.cfg.universe and "XLF" in engine.cfg.universe and "GLD" not in engine.cfg.universe
+    assert {c.underlying for c in engine.scan()} <= set(engine.cfg.universe)
+    client = TestClient(create_app(engine.cfg, engine))
+    rows = {t["symbol"]: t for t in client.get("/api/settings").json()["tickers"]}
+    assert rows["QQQ"] == {"symbol": "QQQ", "enabled": False, "in_config": True, "open_positions": 0}
+    assert rows["XLF"]["enabled"] and not rows["XLF"]["in_config"] and not rows["GLD"]["enabled"]
+    assert client.get("/api/status").json()["universe"] == engine.cfg.universe
+    engine.update_settings({})
+    assert engine.cfg.universe == base

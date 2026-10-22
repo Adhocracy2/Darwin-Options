@@ -1,5 +1,5 @@
 """Settings people can change from the dashboard: strategies on/off, exit rules,
-and the new-entries switch.
+tickers to trade, and the new-entries switch.
 
 They're stored in the journal database and laid over config.yaml at the start of
 every cycle, so the trading service picks them up without a restart. Safety limits
@@ -8,6 +8,7 @@ every cycle, so the trading service picks them up without a restart. Safety limi
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass
 
 from .config import Config
@@ -66,6 +67,8 @@ INFO = {
 }
 
 SETTINGS_KEY = "ui_settings"
+TICKER_RE = re.compile(r"^[A-Z]{1,5}$")
+MAX_TICKERS = 30
 
 
 class SettingsError(ValueError):
@@ -79,6 +82,21 @@ def validate(overlay: dict) -> dict:
         if not isinstance(overlay["allow_new_entries"], bool):
             raise SettingsError("allow_new_entries must be true or false")
         out["allow_new_entries"] = overlay["allow_new_entries"]
+    tickers = overlay.get("tickers") or {}
+    if not isinstance(tickers, dict):
+        raise SettingsError("tickers must be a map of symbol to on/off")
+    if len(tickers) > MAX_TICKERS:
+        raise SettingsError(f"at most {MAX_TICKERS} tickers")
+    clean_tickers: dict[str, bool] = {}
+    for sym, on in tickers.items():
+        sym = str(sym).strip().upper()
+        if not TICKER_RE.match(sym):
+            raise SettingsError(f"{sym!r} isn't a ticker (1-5 letters, like SPY)")
+        if not isinstance(on, bool):
+            raise SettingsError(f"{sym}: must be on or off")
+        clean_tickers[sym] = on
+    if clean_tickers:
+        out["tickers"] = clean_tickers
     for name, s in (overlay.get("strategies") or {}).items():
         if name not in STRATEGIES:
             raise SettingsError(f"unknown strategy {name!r}")
@@ -118,6 +136,7 @@ def _fmt(f: Field, v: float) -> str:
 def apply(cfg: Config, base: Config, overlay: dict) -> None:
     """Reset `cfg`'s editable settings to `base` (config.yaml), then lay the overlay on top."""
     cfg.allow_new_entries = overlay.get("allow_new_entries", base.allow_new_entries)
+    cfg.universe = active_tickers(base, overlay)
     overrides = copy.deepcopy(base.management.overrides)
     for name in STRATEGIES:
         s = overlay.get("strategies", {}).get(name, {})
@@ -127,7 +146,20 @@ def apply(cfg: Config, base: Config, overlay: dict) -> None:
     cfg.management.overrides = overrides
 
 
-def describe(cfg: Config, base: Config, overlay: dict, open_counts: dict[str, int]) -> dict:
+def all_tickers(base: Config, overlay: dict) -> list[str]:
+    """config.yaml's universe first, then tickers added from the dashboard."""
+    added = [t for t in (overlay.get("tickers") or {}) if t not in base.universe]
+    return list(base.universe) + added
+
+
+def active_tickers(base: Config, overlay: dict) -> list[str]:
+    """Tickers scanned for new trades. config.yaml ones are on unless switched off; added ones as saved."""
+    t = overlay.get("tickers") or {}
+    return [s for s in all_tickers(base, overlay) if t.get(s, s in base.universe)]
+
+
+def describe(cfg: Config, base: Config, overlay: dict, open_counts: dict[str, int],
+             open_by_ticker: dict[str, int] | None = None) -> dict:
     """Everything the Strategies screen needs: current values, defaults and field metadata."""
     strategies = []
     for name in STRATEGIES:
@@ -146,6 +178,8 @@ def describe(cfg: Config, base: Config, overlay: dict, open_counts: dict[str, in
         "allow_new_entries": cfg.allow_new_entries,
         "allow_new_entries_default": base.allow_new_entries,
         "strategies": strategies,
+        "tickers": [{"symbol": t, "enabled": t in cfg.universe, "in_config": t in base.universe,
+                     "open_positions": (open_by_ticker or {}).get(t, 0)} for t in all_tickers(base, overlay)],
         "fields": {k: {"label": f.label, "help": f.help, "kind": f.kind, "min": f.min, "max": f.max}
                    for k, f in FIELDS.items()},
     }
