@@ -68,30 +68,57 @@ export type Performance = {
 export type Snapshot = { ts: string; equity: number; open_risk: number; realized: number; unrealized: number };
 export type Event = { id: number; ts: string; kind: string; position_id: string | null; message: string };
 
-export type FieldKind = "pct" | "mult" | "days" | "price" | "bool";
+export type FieldKind = "pct" | "mult" | "days" | "price" | "bool" | "delta" | "widths" | "time";
 export type FieldMeta = { label: string; help: string; kind: FieldKind; min: number; max: number };
-export type ExitField = { key: string; value: number | boolean; default: number | boolean; changed: boolean };
+export type FieldValue = number | boolean | string | number[];
+export type SettingField = { key: string; value: FieldValue; default: FieldValue; changed: boolean };
+export type ExitField = SettingField;
 export type StrategySettings = {
   name: string;
+  type: string;
   label: string;
   description: string;
+  builtin: boolean;
+  removable: boolean;
+  same_day: boolean;
+  same_day_ok: boolean;
   enabled: boolean;
   enabled_default: boolean;
   open_positions: number;
-  exit: ExitField[];
+  entry: SettingField[];
+  exit: SettingField[];
+};
+export type StrategyType = {
+  type: string;
+  label: string;
+  description: string;
+  same_day_ok: boolean;
+  entry: Record<string, FieldValue>;
+  same_day_entry: Record<string, FieldValue> | null;
+  exit: Record<string, FieldValue>;
+  same_day_exit: Record<string, FieldValue> | null;
 };
 export type TickerSetting = { symbol: string; enabled: boolean; in_config: boolean; open_positions: number };
 export type Settings = {
   allow_new_entries: boolean;
   allow_new_entries_default: boolean;
   strategies: StrategySettings[];
+  types: StrategyType[];
+  same_day: { entry_start: string; entry_end: string; close_by_time: string; live_data: boolean };
   tickers: TickerSetting[];
   fields: Record<string, FieldMeta>;
+};
+export type StrategyUpdate = {
+  type?: string;
+  label?: string;
+  enabled?: boolean;
+  entry?: Record<string, FieldValue | null>;
+  exit?: Record<string, FieldValue | null>;
 };
 export type SettingsUpdate = {
   allow_new_entries?: boolean;
   tickers?: Record<string, boolean>;
-  strategies: Record<string, { enabled?: boolean; exit?: Record<string, number | boolean | null> }>;
+  strategies: Record<string, StrategyUpdate>;
 };
 
 /** Error carrying the server's message (FastAPI puts it in `detail`). */

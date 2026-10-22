@@ -77,7 +77,8 @@ class RiskGate:
         if c.score < r.min_score:
             reasons.append(f"score {c.score:.3f} below min {r.min_score}")
         for leg in c.legs:
-            if leg.is_short and leg.contract.dte(today) <= m.close_at_dte:
+            same_day = m.close_by_time is not None and leg.contract.dte(today) == 0
+            if leg.is_short and leg.contract.dte(today) <= m.close_at_dte and not same_day:
                 reasons.append(f"short leg {leg.contract.symbol} inside close window")
 
         if c.attach_to:
@@ -98,7 +99,9 @@ class RiskGate:
                 reasons.append(f"max positions on {c.underlying} reached")
             cap = state.per_trade_cap if state else min(r.max_loss_per_trade, per_trade_pct * equity)
             if state and state.pilot:
-                if c.strategy not in r.pilot_strategies:
+                from .strategies import type_of
+
+                if c.strategy not in r.pilot_strategies and type_of(self.cfg, c.strategy) not in r.pilot_strategies:
                     reasons.append(f"pilot: {c.strategy} not allowed yet")
                 if c.leg_spread_pct > r.pilot_max_leg_spread_pct:
                     reasons.append(f"pilot: a leg's bid/ask is {c.leg_spread_pct:.0%} of mid "
@@ -113,6 +116,10 @@ class RiskGate:
             group_pct = 1.0 if state and state.pilot else r.max_group_risk_pct
             group_room = group_pct * equity - group_risk
             qty = int(min(cap, room, group_room, buying_power) // c.max_loss)
+            floor = state.min_trade_risk if state else 0.0
+            if qty >= 1 and qty * c.max_loss < floor:
+                reasons.append(f"too small: ${qty * c.max_loss:.0f} at risk is below the minimum ${floor:.0f} "
+                               f"({floor / equity if equity else 0:.0%} of equity)")
             if qty < 1:
                 reasons.append(f"max loss ${c.max_loss:.0f}/unit exceeds limits (trade cap ${cap:.0f} = "
                                f"{cap / equity if equity else 0:.1%} of equity, portfolio room ${room:.0f}, "

@@ -35,6 +35,7 @@ class RiskState:
     measured: dict
     size_multiplier: float = 1.0
     per_trade_cap: float = 0.0  # dollars of max loss allowed per trade, all limits applied
+    min_trade_risk: float = 0.0  # dollars: smaller trades are skipped
     pilot: bool = False
     entries_left_today: int | None = None  # pilot: new trades still allowed today
     capital_mode: bool = False  # equity is the trading capital + system P&L, not the account
@@ -154,7 +155,8 @@ def assess(r: RiskConfig, equity: float, snapshots: list[dict], closed: list[Pos
     return RiskState(equity=equity, stage=stage, risk_per_trade_pct=per_trade,
                      max_portfolio_risk_pct=portfolio_pct, max_positions=max_positions,
                      peak=peak, drawdown=dd, day_change_pct=day, measured=measured, size_multiplier=mult,
-                     per_trade_cap=cap, pilot=r.pilot, entries_left_today=entries_left,
+                     per_trade_cap=cap, min_trade_risk=0.0 if r.pilot else r.min_risk_per_trade_pct * equity,
+                     pilot=r.pilot, entries_left_today=entries_left,
                      capital_mode=r.capital is not None, halted=halted, reasons=reasons, goals=goals)
 
 

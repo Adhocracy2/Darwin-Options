@@ -40,8 +40,13 @@ def find_roll(pos: Position, reason: str, ctx: StrategyContext, gate, positions:
     """Best acceptable roll for `pos`, or (None, why not)."""
     cfg = ctx.cfg
     rc = cfg.rolling
-    if not rc.enabled or pos.strategy not in rc.strategies:
+    from .strategies import find
+
+    inst = find(cfg, pos.strategy)
+    if not rc.enabled or inst is None or inst.type not in rc.strategies:
         return None, "rolling off for this strategy"
+    if inst.same_day:
+        return None, "same-day trades are never rolled"
     if reason.split(":")[0] not in rc.on_reasons:
         return None, f"no rolling on '{reason.split(':')[0]}'"
     if roll_count(pos) >= rc.max_rolls:
@@ -63,7 +68,7 @@ def find_roll(pos: Position, reason: str, ctx: StrategyContext, gate, positions:
     close_legs = [Leg(sc, +1), Leg(lc, -1)]
     close_debit = -analysis.expected_net_credit(close_legs, old, cfg.execution.slippage_frac)
 
-    cs = cfg.credit_spread
+    cs = inst.params
     chain = ctx.md.chain(pos.underlying, cs.dte_min, cs.dte_max, right)
     best: Roll | None = None
     why = "no later expiry with a paid-for roll"
@@ -81,7 +86,7 @@ def find_roll(pos: Position, reason: str, ctx: StrategyContext, gate, positions:
                 continue
             new_legs = [Leg(short.contract, -1), Leg(long.contract, 1)]
             qmap = {short.contract.symbol: short, long.contract.symbol: long}
-            new = price_candidate("credit_spread", pos.underlying, new_legs, qmap, chain, ctx,
+            new = price_candidate(pos.strategy, pos.underlying, new_legs, qmap, chain, ctx,
                                   max_loss=lambda cr: (width - cr) * 100, max_profit=lambda cr: cr * 100,
                                   vol_from=short, notes={"side": "put" if right is Right.PUT else "call",
                                                          "width": width, "short_delta": short.delta,

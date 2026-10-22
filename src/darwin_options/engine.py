@@ -20,8 +20,9 @@ from .roller import find_roll, roll_count
 from .risk import RiskGate, assert_never_naked, holdings_of
 from .store import Store
 from .strategies.base import StrategyContext
-from .settings import SETTINGS_KEY, apply as apply_settings, validate as validate_settings
-from .strategies import STRATEGIES
+from .settings import SETTINGS_KEY, SettingsError, apply as apply_settings, validate as validate_settings
+from . import strategies as strategy_registry
+from .strategies import sameday
 from . import analysis
 
 RISK_RESET_KEY = "risk_reset"
@@ -74,7 +75,8 @@ class Engine:
         self.refresh_settings()
 
     def _build_strategies(self) -> None:
-        self.strategies = [cls() for name, cls in STRATEGIES.items() if getattr(self.cfg, name).enabled]
+        strategy_registry.sync_exit_rules(self.cfg)
+        self.strategies = strategy_registry.build(self.cfg)
 
     def refresh_settings(self) -> bool:
         """Apply dashboard settings if they changed since we last looked. Returns True if applied."""
@@ -89,7 +91,12 @@ class Engine:
 
     def update_settings(self, overlay: dict) -> dict:
         """Validate, save and apply new dashboard settings. Returns the stored overlay."""
-        clean = validate_settings(overlay)
+        clean = validate_settings(overlay, self.base_cfg)
+        kept = set(clean.get("strategies", {})) | {d.get("id") for d in self.base_cfg.custom_strategies or []}
+        in_use = {p.strategy for p in self.store.positions("open")}
+        for inst in strategy_registry.instances(self.cfg):
+            if not inst.builtin and inst.id not in kept and inst.id in in_use:
+                raise SettingsError(f"{inst.label} has open positions: switch it off instead of deleting it")
         self.store.set_setting(SETTINGS_KEY, clean)
         self.refresh_settings()
         self.store.event("settings", "strategy settings changed", data=clean)
@@ -105,8 +112,11 @@ class Engine:
     def scan(self, symbols: list[str] | None = None) -> list[Candidate]:
         ctx = StrategyContext(self.cfg, ScanCache(self.md), self.store.positions("open"), self.md.today(), self.now())
         out: list[Candidate] = []
+        same_day_block = sameday.blocked(ctx) if any(st.same_day for st in self.strategies) else None
         for sym in symbols or self.cfg.universe:
             for strat in self.strategies:
+                if strat.same_day and same_day_block:
+                    continue
                 try:
                     out.extend(strat.generate(sym, ctx))
                 except Exception as e:
@@ -219,7 +229,9 @@ class Engine:
     def try_roll(self, pos: Position, action: ExitAction) -> bool:
         """Roll instead of closing when it's paid for and passes every check (see roller.py)."""
         rc = self.cfg.rolling
-        if (not rc.enabled or not self.cfg.allow_new_entries or pos.strategy not in rc.strategies
+        inst = strategy_registry.find(self.cfg, pos.strategy)
+        if (not rc.enabled or not self.cfg.allow_new_entries or inst is None or inst.same_day
+                or inst.type not in rc.strategies
                 or action.reason.split(":")[0] not in rc.on_reasons
                 or set(action.symbols) != {l.symbol for l in pos.open_legs}):
             return False

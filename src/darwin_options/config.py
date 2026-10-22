@@ -74,26 +74,18 @@ class LeapsCallConfig:
 
 
 @dataclass
-class ZeroDTEConfig:
-    """Same-day expiry (0DTE) credit spreads and iron condors, opened and closed the same day.
+class SameDayConfig:
+    """Rules for any strategy set to trade options expiring today (0DTE: days to expiry 0 to 0).
 
-    Off by default. Untested with real money. Prices move fast on the last day, so it only
-    trades on live quotes (ibkr.market_data_type: 1), never on 15-minute-delayed ones."""
-    enabled: bool = False
-    symbols: list[str] = field(default_factory=lambda: ["SPY"])  # need an expiry every trading day
-    structures: list[str] = field(default_factory=lambda: ["iron_condor", "put_spread", "call_spread"])
-    short_delta_min: float = 0.05  # far out of the money: small credit, high win rate
-    short_delta_max: float = 0.15
-    widths: list[float] = field(default_factory=lambda: [2.0, 3.0, 5.0])
-    min_credit_pct_of_width: float = 0.05
-    min_otm_pct: float = 0.004
+    Applied automatically, not per strategy. Untested with real money."""
+    entry_start: str = "10:00"  # New York time; skips the opening swings
+    entry_end: str = "13:30"  # later entries collect too little for the risk left
+    close_by_time: str = "15:30"  # default exit time; each strategy can change its own
+    require_live_data: bool = True  # never on 15-minute-delayed quotes
     # Far protective legs on the last day are often bid only a cent or two, so they get a
     # looser check than filters.min_bid; short legs still pass the normal filters.
     long_min_bid: float = 0.01
-    long_max_spread: float = 0.05  # dollars  # short strike at least 0.4% from the price
-    entry_start: str = "10:00"  # New York time; skips the opening swings
-    entry_end: str = "13:30"  # later entries collect too little for the risk left
-    require_live_data: bool = True
+    long_max_spread: float = 0.05  # dollars
 
 
 @dataclass
@@ -110,23 +102,23 @@ class RiskConfig:
     max_loss_per_trade_pct: float = 0.02  # of equity
     max_portfolio_risk_pct: float = 0.25  # sum of max losses of open positions / equity
     max_positions: int = 10
-    max_positions_per_underlying: int = 2
+    max_positions_per_underlying: int = 2  # spread positions across tickers
     min_score: float = 0.0  # minimum expected value per $ risked
 
-    # Growth stages: limits by account size. A small account can't diversify (the smallest
-    # spread is a big share of it), so the ceilings start high and tighten as equity grows.
+    # Limits by account size. Defaults follow the usual rules for a ~$10k account: risk 1-5% of
+    # it per trade, spread over 5-10 smaller positions, about 30% of it at risk in total.
     # These are ceilings; measured-edge sizing below can only make trades smaller.
     stages: list = field(default_factory=lambda: [
-        {"min_equity": 0, "risk_per_trade_pct": 0.20, "max_portfolio_risk_pct": 0.40, "max_positions": 2},
-        {"min_equity": 2_000, "risk_per_trade_pct": 0.10, "max_portfolio_risk_pct": 0.35, "max_positions": 4},
-        {"min_equity": 10_000, "risk_per_trade_pct": 0.05, "max_portfolio_risk_pct": 0.30, "max_positions": 8},
-        {"min_equity": 50_000, "risk_per_trade_pct": 0.02, "max_portfolio_risk_pct": 0.25, "max_positions": 12},
+        {"min_equity": 0, "risk_per_trade_pct": 0.05, "max_portfolio_risk_pct": 0.30, "max_positions": 10},
     ])
+    # Trades risking less than this share of equity are skipped: too small to matter after
+    # commissions (four legs cost ~$5 a round trip).
+    min_risk_per_trade_pct: float = 0.01
     # Measured-edge sizing: once there are enough closed trades, risk per trade is a fraction
     # of the Kelly bet computed from your own results. No measured edge -> no new trades.
     kelly_multiplier: float = 0.5  # half-Kelly: ~75% of the growth for far less drawdown
     min_trades_for_kelly: int = 30
-    probation_risk_pct: float = 0.05  # per-trade ceiling until there are enough trades
+    probation_risk_pct: float = 0.02  # per-trade ceiling until there are enough trades
     pause_if_no_edge: bool = True
     # Drawdown brakes, measured from the equity peak (or the last manual reset).
     drawdown_reduce_at: float = 0.15  # halve trade size
@@ -163,8 +155,8 @@ class ManagementConfig:
     leaps_stop_loss_pct: float = 0.40  # close PMCC if down this much of the debit paid
     debit_stop_loss_pct: float = 0.50  # debit trades (calendars): close if down this much of the debit
     check_threatened: bool = True  # close when a short strike is at/near the money
-    # Same-day expiries only: close everything at this New York time ("HH:MM") on expiry day,
-    # instead of the day-based rules above, which would close a 0DTE trade as soon as it opens.
+    # Same-day (0DTE) strategies only: close everything at this New York time ("HH:MM") on
+    # expiry day, instead of the day-based rules above. Set automatically for them.
     close_by_time: str | None = None
     # Per-strategy changes to any of the settings above. YAML entries are merged into these.
     overrides: dict = field(default_factory=lambda: {
@@ -172,10 +164,6 @@ class ManagementConfig:
         # still guarded by the extrinsic-value and DTE checks.
         "iron_butterfly": {"take_profit_pct": 0.25, "check_threatened": False},
         "calendar": {"take_profit_pct": 0.25, "close_at_dte": 5, "check_threatened": False},
-        # 0DTE: out by 15:30 New York, tighter stop, and a smaller threatened buffer because
-        # the shorts start only ~0.5-1% out of the money.
-        "zero_dte": {"take_profit_pct": 0.50, "stop_loss_mult": 1.5, "close_at_dte": 0,
-                     "close_by_time": "15:30", "itm_buffer_pct": 0.002},
     })
 
     def for_strategy(self, name: str) -> "ManagementConfig":
@@ -188,10 +176,12 @@ class RollingConfig:
     but only when the roll is paid for, passes the risk gate, and the model expects it to make money.
     Never on a stop loss: rolling losers is how small losses become big ones."""
     enabled: bool = True
-    strategies: list = field(default_factory=lambda: ["credit_spread"])
-    on_reasons: list = field(default_factory=lambda: ["dte exit", "short strike threatened"])
+    strategies: list = field(default_factory=lambda: ["credit_spread"])  # strategy types; same-day never rolls
+    # Only roll at the planned time exit. A threatened short strike usually means a losing trade,
+    # and rolling losers is how small losses become big ones: those are closed instead.
+    on_reasons: list = field(default_factory=lambda: ["dte exit"])
     min_net_credit: float = 0.05  # per share: the roll must collect at least this
-    max_rolls: int = 2  # per position chain
+    max_rolls: int = 1  # per position chain
 
 
 @dataclass
@@ -240,7 +230,11 @@ class Config:
     iron_butterfly: IronButterflyConfig = field(default_factory=IronButterflyConfig)
     calendar: CalendarConfig = field(default_factory=CalendarConfig)
     leaps_call: LeapsCallConfig = field(default_factory=LeapsCallConfig)
-    zero_dte: ZeroDTEConfig = field(default_factory=ZeroDTEConfig)
+    same_day: SameDayConfig = field(default_factory=SameDayConfig)
+    # Extra strategies beyond the five built-in ones, usually added from the dashboard:
+    # [{id, type, label, enabled, entry: {...}, exit: {...}}]. `entry` changes the type's
+    # settings above (e.g. dte_min: 0, dte_max: 0 for same-day); `exit` the management rules.
+    custom_strategies: list = field(default_factory=list)
     filters: FilterConfig = field(default_factory=FilterConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     management: ManagementConfig = field(default_factory=ManagementConfig)

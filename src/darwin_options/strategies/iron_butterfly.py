@@ -5,15 +5,15 @@ from __future__ import annotations
 
 from .. import analysis
 from ..models import MULTIPLIER, Candidate, Leg, Right
-from .base import StrategyContext
-from .common import price_candidate
+from .base import StrategyBase, StrategyContext
+from .common import long_ok, price_candidate
 
 
-class IronButterfly:
-    name = "iron_butterfly"
+class IronButterfly(StrategyBase):
+    type = name = "iron_butterfly"
 
     def generate(self, symbol: str, ctx: StrategyContext) -> list[Candidate]:
-        ib = ctx.cfg.iron_butterfly
+        ib = self.p(ctx)
         chain = ctx.md.chain(symbol, ib.dte_min, ib.dte_max)
         puts, calls = chain.by_expiry(Right.PUT), chain.by_expiry(Right.CALL)
         out: list[Candidate] = []
@@ -27,7 +27,8 @@ class IronButterfly:
             sp, sc = p_by[atm], c_by[atm]
             for width in ib.wing_widths:
                 lp, lc = p_by.get(round(atm - width, 2)), c_by.get(round(atm + width, 2))
-                if not (lp and lc) or not all(analysis.liquid(q, ctx.cfg.filters) for q in (sp, sc, lp, lc)):
+                if not (lp and lc) or not all(analysis.liquid(q, ctx.cfg.filters) for q in (sp, sc)) \
+                        or not all(long_ok(q, ctx, self.same_day) for q in (lp, lc)):
                     continue
                 legs = [Leg(sp.contract, -1), Leg(sc.contract, -1), Leg(lp.contract, 1), Leg(lc.contract, 1)]
                 qmap = {q.contract.symbol: q for q in (sp, sc, lp, lc)}

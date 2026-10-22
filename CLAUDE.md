@@ -19,8 +19,8 @@ renamed. Don't reintroduce "flick" names.
   language, no jargon without a gloss.
 - Not a professional developer; explain options/trading concepts briefly when they matter.
 - Wants honest numbers. Say clearly when something is untested, simulated, or a guess.
-- IBKR account has Level 4 options. Plan: fund $2,000 (IBKR's margin minimum for spreads) but let
-  the system trade only part of it (`risk.capital`, default 500) in **pilot mode** first.
+- IBKR account has Level 4 options. Since 2026-10-23 the paper setup simulates a **$10,000 account**
+  (`risk.capital: 10000`, pilot off) with 1–5% risked per trade, at the owner's request.
 - The "$100 → $1,000 → $10,000" growth goal was dropped at their request. Don't bring it back.
 
 ## Hard rules (never weaken these)
@@ -40,26 +40,34 @@ renamed. Don't reintroduce "flick" names.
 
 ## Architecture (src/darwin_options)
 
-- `strategies/`: credit_spread, iron_condor, iron_butterfly, calendar, leaps_call (poor man's
-  covered call), zero_dte (same-day SPY spreads/condors; off by default; entries 10:00–13:30 NY,
-  forced exit at `management.overrides.zero_dte.close_by_time` 15:30; refuses delayed quotes and
-  half-days; valued by hours via `clock.py` + `analysis.evaluate_intraday`). Registry in `strategies/__init__.py`. Shared pricing in `strategies/common.py`.
+- `strategies/`: five strategy *types* (credit_spread, iron_condor, iron_butterfly, calendar,
+  leaps_call). A *strategy* = type + its own entry settings under an id; positions record the id,
+  exit rules and review results are per id. The five built-ins use the type name as id and the
+  config section of that name; more come from `custom_strategies` or the dashboard's "Add strategy".
+  `strategies/__init__.py`: registry, `instances()`, `build()`, `type_of()`, `sync_exit_rules()`.
+  **0DTE is not a strategy**: any spread/condor/butterfly strategy with days to expiry 0 to 0 is
+  same-day and automatically gets `strategies/sameday.py` rules (entries 10:00–13:30 NY, no delayed
+  quotes, no half-days, looser wing liquidity) plus `close_by_time` (default 15:30) in its exit rules,
+  hours-based valuation in `common.price_candidate` (`clock.py`, `analysis.evaluate_intraday`), and
+  is never rolled. Calendars and LEAPS calls can't be same-day.
 - `analysis.py`: expected value / probability of profit. Lognormal model with forecast vol =
   blend of IV and 30-day realized vol; trades valued at the **planned exit** (close-at-DTE), legs
   repriced at their IV, never below intrinsic (American options); subtracts commissions and
   closing bid/ask.
-- `risk.py` (gate, never-naked) + `portfolio.py` (stages by account size, half-Kelly from own
-  results after 30 trades, 5% probation, drawdown brakes 15%/30%, 6% daily stop, correlated
-  group cap for SPY/QQQ/IWM/DIA, trading capital, pilot mode).
+- `risk.py` (gate, never-naked) + `portfolio.py`. Defaults follow the owner's $10k rules: max 5% and
+  min 1% (`min_risk_per_trade_pct`) of equity per trade, up to 10 positions, 30% total at risk,
+  2 per ticker, 30% cap on the correlated SPY/QQQ/IWM/DIA group; 2% probation until 30 closed
+  trades, then half-Kelly capped at 5%; drawdown brakes 15%/30%, 6% daily stop; pilot mode optional.
 - `manager.py`: exits; per-strategy overrides via `management.overrides`.
-- `roller.py`: rolling credit spreads out in time (one 4-leg combo).
+- `roller.py`: rolling credit spreads out in time (one 4-leg combo), only at the planned time exit
+  (not when the strike is threatened: that's rolling a loser), at most once.
 - `engine.py`: the cycle (reconcile → manage/roll → scan → gate → execute → snapshot); file lock
   so the trader and dashboard never trade at once; dashboard settings applied each cycle.
 - `ibkr.py`, `data/ibkr.py`, `broker/ibkr.py`: ib_async on its own event-loop thread. Runs without IB Gateway: connect failures raise `GatewayUnavailable` (retry every 30s), cycles are skipped, the API returns 503 and `/api/status` reports `gateway`. Combos are
   BUY at a negative price for a credit. `broker/sim.py`: local simulator. `data/synthetic.py`:
   offline fake market (P&L meaningless).
-- `settings.py`: dashboard-editable strategy on/off, exit rules and tickers (on/off, add new),
-  stored in the DB and applied to `cfg.universe` each cycle.
+- `settings.py`: dashboard-editable settings stored in the DB, laid over config.yaml each cycle:
+  strategies (add/delete, on/off, entry settings, exit rules), tickers (`cfg.universe`), new-entries switch.
 - `recorder.py`: every price from IBKR (spots, option quotes with greeks, realized vol, daily closes)
   is also saved to `var/marketdata.db` (`record:` in config). `ReplayMarketData` serves it back as
   of a time; `replay.py` / `darwin replay` reruns the engine on it with the sim broker and a fresh
@@ -88,7 +96,7 @@ renamed. Don't reintroduce "flick" names.
 
 ```bash
 python -m pyflakes src tests
-pytest -q                          # ~123 tests, ~40s
+pytest -q                          # ~130 tests, ~50s
 cd ui && npx tsc -b && npm run build
 ```
 
@@ -101,12 +109,12 @@ deploys to AI1 once its runner is online, so only push tested work there.
 
 - AI1 is set up: services run under systemd, deploys work, IB Gateway is logged in to paper
   account DUR295184 (AUD base currency). The trader ran its first market-hours cycles.
-- No OPRA subscription yet: `ibkr.market_data_type: 3` (delayed) in shared config. 0DTE refuses
-  to trade on delayed data.
+- No OPRA subscription yet: `ibkr.market_data_type: 3` (delayed) in shared config. Same-day
+  strategies refuse to trade on delayed data.
+- Shared config switched to $10k / pilot off / new rules on 2026-10-23 (backup next to it).
+- First paper trade: SPY Nov 27 787/792 bear call spread (`credit_spread`), opened 2026-10-22.
 - First contact found: bogus strike requests (fixed: `listed_options`) and log spam from repeated
   delayed-data notices (now logged once).
-- Local commits after 8895544 (chain fix, 0DTE, tickers, recording) were not pushed at the time of
-  writing; check `git status` / `git log origin/main..`.
 - **Never tested on real systemd:** service restart and deploy rollback (the build sandbox had no systemd).
 - `Booger-Flick` cleanup: the owner was asked to delete branch `ccr-13b4f904-k46h0h` there by hand.
 
@@ -114,8 +122,8 @@ deploys to AI1 once its runner is online, so only push tested work there.
 
 - Simulations here use a synthetic market where no strategy is profitable; use it to compare
   settings, never to predict profit.
-- $1-wide spreads lose to commissions (~$2.60 round trip vs ~$15–20 credit). The smallest
-  sensible trade is one $5-wide spread (~$400–450 max loss); pilot cap defaults to $500.
+- $1-wide spreads lose to commissions (~$2.60 round trip vs ~$15–20 credit). With $10k and the
+  2% probation cap ($200), $2–3-wide spreads are the working size until 30 trades are closed.
 - With the threatened-strike exit, 0.25–0.30-delta shorts get closed at a loss ~40% of the time
   (touch probability ≈ 2× delta). Lowering short delta to ~0.10–0.16 cut losses by more than half
   in simulation.

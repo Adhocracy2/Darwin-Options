@@ -13,7 +13,7 @@ def test_validate_rejects_out_of_range_and_unknown():
         validate({"strategies": {"credit_spread": {"exit": {"close_at_dte": 0}}}})  # never hold to expiry
     with pytest.raises(SettingsError, match="isn't an exit rule"):
         validate({"strategies": {"credit_spread": {"exit": {"leaps_stop_loss_pct": 0.3}}}})
-    with pytest.raises(SettingsError, match="unknown strategy"):
+    with pytest.raises(SettingsError, match="pick a strategy type"):
         validate({"strategies": {"short_strangle": {"enabled": True}}})
     with pytest.raises(SettingsError):
         validate({"strategies": {"calendar": {"exit": {"take_profit_pct": "lots"}}}})

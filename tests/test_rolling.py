@@ -24,6 +24,7 @@ def setup(engine):
     engine.cfg.credit_spread.short_delta_max = 0.35
     engine.md.base_iv, engine.md.realized = 0.30, 0.10  # options rich vs actual moves: rolling can pay
     engine.md.half_spread_pct = 0.01
+    engine.cfg.risk.probation_risk_pct = 0.05  # room for the 2-lot roll (2% would cap at 1 lot)
 
 
 def test_default_market_rolls_are_refused_without_edge(engine, md):

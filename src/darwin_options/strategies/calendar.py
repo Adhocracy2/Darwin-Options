@@ -9,15 +9,15 @@ from __future__ import annotations
 
 from .. import analysis
 from ..models import MULTIPLIER, Candidate, Leg, Right
-from .base import StrategyContext
+from .base import StrategyBase, StrategyContext
 from .common import price_candidate
 
 
-class Calendar:
-    name = "calendar"
+class Calendar(StrategyBase):
+    type = name = "calendar"
 
     def generate(self, symbol: str, ctx: StrategyContext) -> list[Candidate]:
-        cal = ctx.cfg.calendar
+        cal = self.p(ctx)
         front = ctx.md.chain(symbol, cal.front_dte_min, cal.front_dte_max)
         back = ctx.md.chain(symbol, cal.front_dte_min + cal.back_gap_min,
                             cal.front_dte_max + cal.back_gap_max)

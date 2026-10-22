@@ -98,8 +98,10 @@ def leg_ivs(contracts: list[OptionContract], quotes: dict, spot: float, today: d
 
 # ---- illustrative examples (a $100 stock, 20% IV) ---------------------------------
 
-def example(strategy: str, today: date, exit_dte: int, r: float = 0.04, iv: float = 0.20) -> dict:
-    """A textbook version of each strategy, priced with Black-Scholes, for when there's no live trade."""
+def example(strategy: str, today: date, exit_dte: int, r: float = 0.04, iv: float = 0.20,
+            same_day: bool = False) -> dict:
+    """A textbook version of each strategy type, priced with Black-Scholes, for when there's no live trade.
+    Same-day versions use narrow strikes and 1 day left, since this diagram works in whole days."""
     def c(k: float, right: Right, dte: int) -> OptionContract:
         exp = today + timedelta(days=dte)
         return OptionContract(OptionContract.occ("XYZ", exp, right, k), "XYZ", exp, k, right)
@@ -111,9 +113,13 @@ def example(strategy: str, today: date, exit_dte: int, r: float = 0.04, iv: floa
         "iron_butterfly": [(c(100, P, 40), -1), (c(100, C, 40), -1), (c(90, P, 40), 1), (c(110, C, 40), 1)],
         "calendar": [(c(100, P, 30), -1), (c(100, P, 65), 1)],
         "leaps_call": [(c(80, C, 400), 1), (c(106, C, 35), -1)],
-        # same-day condor; priced with 1 day left because this diagram works in whole days
-        "zero_dte": [(c(99, P, 1), -1), (c(97, P, 1), 1), (c(101, C, 1), -1), (c(103, C, 1), 1)],
     }
+    if same_day:
+        shapes = {
+            "credit_spread": [(c(99, P, 1), -1), (c(97, P, 1), 1)],
+            "iron_condor": [(c(99, P, 1), -1), (c(97, P, 1), 1), (c(101, C, 1), -1), (c(103, C, 1), 1)],
+            "iron_butterfly": [(c(100, P, 1), -1), (c(100, C, 1), -1), (c(98, P, 1), 1), (c(102, C, 1), 1)],
+        }
     legs = [PayoffLeg(k, q, iv) for k, q in shapes[strategy]]
     credit = -sum(l.qty * _value(l, 100.0, today, r) for l in legs) * MULTIPLIER
     out = payoff(legs, credit, 100.0, today, r, exit_dte)

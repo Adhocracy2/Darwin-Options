@@ -29,8 +29,18 @@ def test_kelly_matches_known_case():
     assert kelly_fraction([-0.1] * 10) == 0.0
 
 
-def test_stage_by_equity():
+def test_default_limits_follow_one_to_five_percent_rules():
     r = RiskConfig()
+    for eq in (150, 10_000, 60_000):
+        st = stage_for(r, eq)
+        assert st["risk_per_trade_pct"] == 0.05 and st["max_positions"] == 10 and st["max_portfolio_risk_pct"] == 0.30
+    assert r.min_risk_per_trade_pct == 0.01 and r.probation_risk_pct == 0.02
+
+
+def test_stage_by_equity():
+    r = RiskConfig(stages=[{"min_equity": 0, "risk_per_trade_pct": 0.20, "max_portfolio_risk_pct": 0.4, "max_positions": 2},
+                           {"min_equity": 2_000, "risk_per_trade_pct": 0.10, "max_portfolio_risk_pct": 0.35, "max_positions": 4},
+                           {"min_equity": 50_000, "risk_per_trade_pct": 0.02, "max_portfolio_risk_pct": 0.25, "max_positions": 12}])
     assert stage_for(r, 150)["max_positions"] == 2
     assert stage_for(r, 5_000)["risk_per_trade_pct"] == 0.10
     assert stage_for(r, 60_000)["risk_per_trade_pct"] == 0.02
@@ -43,7 +53,7 @@ def test_probation_then_half_kelly():
     wins, losses = closed(0.10, 30), closed(-0.20, 10)  # +2.5% average return on risk
     s = assess(r, 5_000, [], wins + losses, now=NOW)
     k = kelly_fraction([0.10] * 30 + [-0.20] * 10)
-    assert s.measured["kelly"] == k and s.risk_per_trade_pct == pytest.approx(min(0.10, k / 2))
+    assert s.measured["kelly"] == k and s.risk_per_trade_pct == pytest.approx(min(0.05, k / 2))
 
 
 def test_no_edge_pauses_entries():
@@ -75,7 +85,7 @@ def spread_candidate(underlying="SPY", max_loss=80.0):
 def test_hundred_dollar_account_cannot_trade_a_spread(cfg):
     state = assess(cfg.risk, 100, [], [], now=NOW)
     d = RiskGate(cfg).check(spread_candidate(max_loss=80), [], 100, 100, date(2026, 10, 21), state)
-    assert not d.approved and "trade cap $5" in d.reasons[0]  # probation 5% of $100
+    assert not d.approved and "trade cap $2" in d.reasons[0]  # probation 2% of $100
 
 
 def test_correlated_group_shares_one_budget(cfg):
@@ -99,7 +109,7 @@ def test_risk_api_and_reset(engine):
     client = TestClient(create_app(engine.cfg, engine))
     client.post("/api/scan")
     r = client.get("/api/risk").json()
-    assert r["stage"]["min_equity"] == 10_000 and r["goals"] == []
+    assert r["stage"]["min_equity"] == 0 and r["goals"] == []
     assert r["smallest_trade_max_loss"] > 0 and "probation" in r["reasons"][0]
     after = client.post("/api/risk/reset").json()
     assert after["drawdown"] == 0 and any(e["kind"] == "risk" for e in client.get("/api/events").json())
@@ -163,3 +173,14 @@ def test_one_dollar_spreads_lose_to_commissions(engine, md):
     md.half_spread_pct, md.base_iv, md.realized = 0.02, 0.25, 0.15
     engine.run_once()
     assert engine.store.positions("open") == []
+
+
+def test_trades_below_one_percent_are_skipped(cfg):
+    state = assess(cfg.risk, 10_000, [], [], now=NOW)
+    assert state.min_trade_risk == 100 and state.per_trade_cap == 200  # 1% floor, 2% probation cap
+    gate = RiskGate(cfg)
+    assert gate.check(spread_candidate(max_loss=80), [], 10_000, 10_000, date(2026, 10, 21), state).qty == 2  # $160
+    # only $90 of portfolio room left: one $80 lot would risk under 1%, so it's skipped
+    held = [Position("credit_spread", "IWM", [], max_loss=2_910, max_profit=100)]
+    d = gate.check(spread_candidate(max_loss=80), held, 10_000, 10_000, date(2026, 10, 21), state)
+    assert not d.approved and any("too small" in x for x in d.reasons)

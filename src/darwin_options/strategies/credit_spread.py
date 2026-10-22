@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from .. import analysis
 from ..models import MULTIPLIER, Candidate, Leg, Right
-from .base import StrategyContext
+from .base import StrategyBase, StrategyContext
+from .common import long_ok, price_candidate
 
 
-class CreditSpread:
-    name = "credit_spread"
+class CreditSpread(StrategyBase):
+    type = name = "credit_spread"
 
     def generate(self, symbol: str, ctx: StrategyContext) -> list[Candidate]:
-        cfg, cs = ctx.cfg, ctx.cfg.credit_spread
+        cfg, cs = ctx.cfg, self.p(ctx)
         chain = ctx.md.chain(symbol, cs.dte_min, cs.dte_max)
         out: list[Candidate] = []
         for side in cs.sides:
@@ -29,26 +30,16 @@ class CreditSpread:
                     for width in cs.widths:
                         k_long = short.contract.strike - width if right is Right.PUT else short.contract.strike + width
                         long = by_strike.get(round(k_long, 2))
-                        if long is None or not analysis.liquid(long, cfg.filters):
+                        if long is None or not long_ok(long, ctx, self.same_day):
                             continue
                         legs = [Leg(short.contract, -1), Leg(long.contract, +1)]
                         qmap = {short.contract.symbol: short, long.contract.symbol: long}
-                        credit = analysis.expected_net_credit(legs, qmap, cfg.execution.slippage_frac)
-                        if credit < cs.min_credit_pct_of_width * width or credit >= width:
-                            continue
-                        max_loss = (width - credit) * MULTIPLIER
-                        sigma = analysis.forecast_vol(short.iv, chain.realized_vol, cfg.vol_blend)
-                        ev, pop = analysis.evaluate(
-                            legs, credit, chain.spot, ctx.today, sigma, cfg.risk_free_rate,
-                            {q.contract.symbol: q.iv or sigma for q in (short, long)},
-                            cfg.management.for_strategy(self.name).close_at_dte)
-                        ev -= 2 * cfg.execution.commission_per_contract * 2  # open + close, 2 legs
-                        ev -= analysis.closing_cost(legs, qmap, cfg.execution.slippage_frac)
-                        out.append(Candidate(
-                            strategy=self.name, underlying=symbol, legs=legs, net_credit=round(credit, 2),
-                            max_loss=max_loss, max_profit=credit * MULTIPLIER, pop=pop,
-                            expected_value=ev, score=ev / max_loss, spot=chain.spot,
-                            leg_spread_pct=max(short.spread_pct, long.spread_pct),
+                        c = price_candidate(
+                            self.name, symbol, legs, qmap, chain, ctx,
+                            max_loss=lambda cr, w=width: (w - cr) * MULTIPLIER,
+                            max_profit=lambda cr: cr * MULTIPLIER, vol_from=short,
                             notes={"side": side, "width": width, "short_delta": short.delta,
-                                   "iv": short.iv, "rv": chain.realized_vol, "dte": short.contract.dte(ctx.today)}))
+                                   "dte": short.contract.dte(ctx.today)})
+                        if c and cs.min_credit_pct_of_width * width <= c.net_credit < width:
+                            out.append(c)
         return out

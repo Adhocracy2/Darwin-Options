@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from .. import analysis
 from ..models import MULTIPLIER, Candidate, Leg, OptionQuote, Right
-from .base import StrategyContext
-from .common import price_candidate
+from .base import StrategyBase, StrategyContext
+from .common import long_ok, price_candidate
 
 
-def _short_spreads(quotes: list[OptionQuote], right: Right, spot: float, width: float, ic, filters):
+def _short_spreads(quotes: list[OptionQuote], right: Right, spot: float, width: float, ic, ctx, same_day):
     """(short, long) pairs for one side of the condor."""
     by_strike = {q.contract.strike: q for q in quotes}
     for short in quotes:
@@ -18,22 +18,22 @@ def _short_spreads(quotes: list[OptionQuote], right: Right, spot: float, width: 
             continue
         k_long = short.contract.strike - width if right is Right.PUT else short.contract.strike + width
         long = by_strike.get(round(k_long, 2))
-        if long and analysis.liquid(short, filters) and analysis.liquid(long, filters):
+        if long and analysis.liquid(short, ctx.cfg.filters) and long_ok(long, ctx, same_day):
             yield short, long
 
 
-class IronCondor:
-    name = "iron_condor"
+class IronCondor(StrategyBase):
+    type = name = "iron_condor"
 
     def generate(self, symbol: str, ctx: StrategyContext) -> list[Candidate]:
-        ic = ctx.cfg.iron_condor
+        ic = self.p(ctx)
         chain = ctx.md.chain(symbol, ic.dte_min, ic.dte_max)
         puts, calls = chain.by_expiry(Right.PUT), chain.by_expiry(Right.CALL)
         out: list[Candidate] = []
         for expiry in puts.keys() & calls.keys():
             for width in ic.widths:
-                put_side = list(_short_spreads(puts[expiry], Right.PUT, chain.spot, width, ic, ctx.cfg.filters))
-                call_side = list(_short_spreads(calls[expiry], Right.CALL, chain.spot, width, ic, ctx.cfg.filters))
+                put_side = list(_short_spreads(puts[expiry], Right.PUT, chain.spot, width, ic, ctx, self.same_day))
+                call_side = list(_short_spreads(calls[expiry], Right.CALL, chain.spot, width, ic, ctx, self.same_day))
                 for ps, pl in put_side:
                     for cs, cl in call_side:
                         legs = [Leg(ps.contract, -1), Leg(pl.contract, 1), Leg(cs.contract, -1), Leg(cl.contract, 1)]

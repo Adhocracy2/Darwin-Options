@@ -54,7 +54,9 @@ class PositionManager:
 
     def evaluate(self, pos: Position, quotes: dict[str, OptionQuote], spot: float,
                  today: date, now: datetime | None = None) -> ExitAction | None:
-        if pos.strategy == "leaps_call":
+        from .strategies import type_of
+
+        if type_of(self.cfg, pos.strategy) == "leaps_call":
             return self._leaps_call(pos, quotes, spot, today)
         return self._defined_risk(pos, quotes, spot, today, now)
 

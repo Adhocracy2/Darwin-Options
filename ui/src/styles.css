@@ -157,3 +157,13 @@ h3.small { margin: 12px 0 6px; }
 .ticker-add input { width: 180px; max-width: 100%; text-transform: uppercase; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text-primary); font: inherit; padding: 6px 10px; }
 .ticker-add input:focus { outline: none; border-color: var(--accent); }
 .ticker-add input[aria-invalid="true"] { border-color: var(--critical); }
+
+/* Strategies: groups, add form, 0DTE badge */
+.field-group { margin: 16px 0 4px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.badge.zero-dte { border-color: var(--accent); color: var(--accent); }
+.strategy-foot { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+.add-strategy select, .add-strategy .text-input { width: 100%; max-width: 280px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text-primary); font: inherit; padding: 6px 10px; }
+.add-strategy select:focus, .add-strategy .text-input:focus { outline: none; border-color: var(--accent); }
+.add-actions { display: flex; gap: 8px; margin: 12px 0 4px; flex-wrap: wrap; }
+button.link.neg { color: var(--critical); }
+button.link:disabled { opacity: 0.5; cursor: not-allowed; }

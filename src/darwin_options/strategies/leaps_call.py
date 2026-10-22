@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from .. import analysis
 from ..models import MULTIPLIER, Candidate, Leg, OptionQuote, Right
-from .base import StrategyContext
+from .base import StrategyBase, StrategyContext
 
 
-class LeapsCall:
-    name = "leaps_call"
+class LeapsCall(StrategyBase):
+    type = name = "leaps_call"
 
     def _short_calls(self, symbol: str, ctx: StrategyContext) -> tuple[float, float | None, list[OptionQuote]]:
-        lc = ctx.cfg.leaps_call
+        lc = self.p(ctx)
         chain = ctx.md.chain(symbol, lc.short_dte_min, lc.short_dte_max, Right.CALL)
         shorts = [q for q in chain.quotes
                   if lc.short_delta_min <= abs(q.delta or 0) <= lc.short_delta_max
@@ -27,7 +27,7 @@ class LeapsCall:
         return chain.spot, chain.realized_vol, shorts
 
     def generate(self, symbol: str, ctx: StrategyContext) -> list[Candidate]:
-        cfg, lc = ctx.cfg, ctx.cfg.leaps_call
+        cfg, lc = ctx.cfg, self.p(ctx)
         held = [p for p in ctx.positions if p.strategy == self.name and p.underlying == symbol]
         spot, rv, shorts = self._short_calls(symbol, ctx)
         exit_dte = cfg.management.for_strategy(self.name).close_at_dte

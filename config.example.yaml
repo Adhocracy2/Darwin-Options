@@ -74,20 +74,20 @@ leaps_call:
   short_delta_min: 0.15
   short_delta_max: 0.30
 
-zero_dte:
-  # Same-day (0DTE) credit spreads / iron condors on SPY. Opened 10:00-13:30 and always
-  # closed by 15:30 New York (management.overrides.zero_dte.close_by_time). Skips half-days.
-  # Off by default and untested with real money. Needs live option quotes
-  # (ibkr.market_data_type: 1, an OPRA subscription); it won't trade on delayed quotes.
-  # In pilot mode it only trades if added to risk.pilot_strategies.
-  enabled: false
-  symbols: [SPY]
-  structures: [iron_condor, put_spread, call_spread]
-  short_delta_min: 0.05
-  short_delta_max: 0.15
-  widths: [2, 3, 5]
-  entry_start: "10:00"
+same_day:
+  # Rules for any strategy whose days to expiry are 0 to 0 (options expiring today, 0DTE).
+  # Add one from the dashboard: Strategies > Add strategy > tick "Options expiring today".
+  # Untested with real money. Needs live option quotes (ibkr.market_data_type: 1).
+  entry_start: "10:00"           # New York time
   entry_end: "13:30"
+  close_by_time: "15:30"         # default; each strategy can change its own
+  require_live_data: true
+
+# More strategies beyond the five above (usually added from the dashboard instead), e.g.:
+# custom_strategies:
+#   - {id: condor_0dte, type: iron_condor, label: "Condor 0DTE", enabled: false,
+#      entry: {dte_min: 0, dte_max: 0, short_delta_min: 0.05, short_delta_max: 0.15, widths: [2, 3, 5],
+#              min_credit_pct_of_width: 0.05, min_otm_pct: 0.004}}
 
 filters:
   min_open_interest: 100
@@ -96,19 +96,17 @@ filters:
 
 risk:
   max_loss_per_trade: 2500       # dollars; hard cap on any one trade
-  max_positions_per_underlying: 2
+  max_positions_per_underlying: 2  # spread positions across tickers
   min_score: 0.0
-  # Growth stages by account size (ceilings). Small accounts can't diversify: the smallest
-  # spread is a big share of them, so limits start higher and tighten as equity grows.
+  # Usual rules for a ~$10k account: risk 1-5% per trade, 5-10 smaller positions,
+  # about 30% of the account at risk in total. Add more stages to change limits by size.
   stages:
-    - {min_equity: 0,     risk_per_trade_pct: 0.20, max_portfolio_risk_pct: 0.40, max_positions: 2}
-    - {min_equity: 2000,  risk_per_trade_pct: 0.10, max_portfolio_risk_pct: 0.35, max_positions: 4}
-    - {min_equity: 10000, risk_per_trade_pct: 0.05, max_portfolio_risk_pct: 0.30, max_positions: 8}
-    - {min_equity: 50000, risk_per_trade_pct: 0.02, max_portfolio_risk_pct: 0.25, max_positions: 12}
-  # Size from your own results once there are enough: half the Kelly bet, capped by the stage.
+    - {min_equity: 0, risk_per_trade_pct: 0.05, max_portfolio_risk_pct: 0.30, max_positions: 10}
+  min_risk_per_trade_pct: 0.01   # skip trades risking under 1%: too small after commissions
+  # Size from your own results once there are enough: half the Kelly bet, capped at 5%.
   kelly_multiplier: 0.5
   min_trades_for_kelly: 30
-  probation_risk_pct: 0.05       # per-trade ceiling before then
+  probation_risk_pct: 0.02       # per-trade ceiling before then
   pause_if_no_edge: true         # stop new trades if your results show no edge
   drawdown_reduce_at: 0.15       # halve trade size 15% below the equity peak
   drawdown_halt_at: 0.30         # stop new trades 30% below the peak (reset on the dashboard)
@@ -118,21 +116,21 @@ risk:
   max_group_risk_pct: 0.30
   # Use only part of the account. Sizing, drawdown and goals are measured on this plus the
   # system's own P&L. Leave unset to use the whole account.
-  capital: 500
-  # Pilot mode for the first live days: hard dollar limits replace the % limits.
-  pilot: true
-  pilot_max_loss_per_trade: 500   # one $5-wide spread; $1-wide spreads lose to commissions
+  capital: 10000
+  # Pilot mode: hard dollar limits replace the % limits (one trade at a time).
+  pilot: false
+  pilot_max_loss_per_trade: 500
   pilot_max_positions: 1
   pilot_max_new_trades_per_day: 1
-  pilot_strategies: [credit_spread]
+  pilot_strategies: [credit_spread]   # strategy ids or types
   pilot_max_leg_spread_pct: 0.10
 
 rolling:                         # roll credit spreads instead of closing, only when it pays
   enabled: true
-  strategies: [credit_spread]
-  on_reasons: ["dte exit", "short strike threatened"]   # never on stop losses
+  strategies: [credit_spread]    # strategy types; same-day trades are never rolled
+  on_reasons: ["dte exit"]       # only at the planned time exit; never threatened or stop-loss trades
   min_net_credit: 0.05           # per share
-  max_rolls: 2
+  max_rolls: 1
 
 management:
   take_profit_pct: 0.50

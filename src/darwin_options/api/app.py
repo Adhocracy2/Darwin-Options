@@ -18,8 +18,7 @@ from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
 from ..report import performance
 from ..review import review as review_trades
-from ..strategies import STRATEGIES
-from ..settings import INFO as SETTINGS_INFO
+from ..strategies import instances as strategy_instances
 from ..settings import SETTINGS_KEY, SettingsError, describe as describe_settings
 
 log = logging.getLogger(__name__)
@@ -97,7 +96,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         spot = engine.md.spot(underlying)
         quotes = engine.md.quotes([c.symbol for c in contracts])
         ivs = payoff_mod.leg_ivs(contracts, quotes, spot, today, cfg.risk_free_rate)
-        exit_dte = cfg.management.for_strategy(strategy).close_at_dte if strategy in STRATEGIES else 0
+        known = {i.id for i in strategy_instances(engine.cfg)}
+        exit_dte = engine.cfg.management.for_strategy(strategy).close_at_dte if strategy in known else 0
         pl = [payoff_mod.PayoffLeg(c, q, ivs[c.symbol]) for c, (_, q) in zip(contracts, legs)]
         out = payoff_mod.payoff(pl, entry_credit, spot, today, cfg.risk_free_rate, exit_dte)
         out["underlying"] = underlying
@@ -131,11 +131,11 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         """One diagram per strategy: the best trade from the last scan, else a textbook example."""
         rows = engine.store.latest_scan()["candidates"]
         out = []
-        for name in STRATEGIES:
-            label, desc = SETTINGS_INFO[name]
+        for inst in strategy_instances(engine.cfg):
+            name = inst.id
             mine = sorted((r for r in rows if r["strategy"] == name and not r.get("attach_to")),
                           key=lambda r: (bool(r.get("approved")), r["score"]), reverse=True)
-            entry = {"name": name, "label": label, "description": desc}
+            entry = {"name": name, "label": inst.label, "description": ""}
             if mine:
                 r = mine[0]
                 try:
@@ -145,9 +145,11 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
                 except Exception as e:
                     log.warning("payoff for %s failed: %s", name, e)
             if "payoff" not in entry:
-                entry["payoff"] = payoff_mod.example(name, engine.md.today(),
-                                                     cfg.management.for_strategy(name).close_at_dte, cfg.risk_free_rate)
-                entry["source"] = "Example on a $100 stock at 20% implied volatility"
+                entry["payoff"] = payoff_mod.example(inst.type, engine.md.today(),
+                                                     engine.cfg.management.for_strategy(name).close_at_dte,
+                                                     cfg.risk_free_rate, same_day=inst.same_day)
+                entry["source"] = ("Example on a $100 stock at 20% implied volatility"
+                                   + (", expiring today" if inst.same_day else ""))
             out.append(entry)
         return out
 

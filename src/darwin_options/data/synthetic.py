@@ -30,6 +30,10 @@ class SyntheticMarketData:
     def today(self) -> date:
         return self._today
 
+    def clock_now(self) -> datetime | None:
+        """Clock for intraday rules (see Engine.now); None = the real clock."""
+        return self.now
+
     def advance(self, days: int) -> None:
         self._today += timedelta(days=days)
 
