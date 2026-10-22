@@ -27,6 +27,34 @@ log = logging.getLogger(__name__)
 _DONE = {"Filled", "Cancelled", "ApiCancelled", "Inactive"}
 
 
+def account_usd(summary, values, usd_per_base: float = 0.0) -> tuple[float, float]:
+    """(net liquidation, available funds) in US dollars. Options are priced in USD, but an
+    account's base currency may not be (e.g. AUD); then convert, preferring IBKR's own rate."""
+    def amounts(name: str) -> dict[str, float]:
+        out = {}
+        for v in summary:
+            if v.tag == name and v.value not in (None, ""):
+                out[v.currency or "BASE"] = float(v.value)
+        return out
+
+    nl, af = amounts("NetLiquidation"), amounts("AvailableFunds")
+    if "USD" in nl:
+        return nl["USD"], af.get("USD", 0.0)
+    if not nl:
+        return 0.0, 0.0
+    base = next(iter(nl))
+    if base == "BASE":  # currency not stated: treat as USD, as IBKR does for USD accounts
+        return nl[base], af.get(base, 0.0)
+    # IBKR's ExchangeRate for USD = units of base currency per US dollar (only when USD is held).
+    rate = next((float(v.value) for v in values if v.tag == "ExchangeRate" and v.currency == "USD"
+                 and v.value not in (None, "") and float(v.value) > 0), None)
+    usd_per_unit = 1 / rate if rate else usd_per_base
+    if not usd_per_unit:
+        raise RuntimeError(f"IBKR account is in {base} and IBKR gave no US dollar rate; set "
+                           f"ibkr.usd_per_base in config.yaml (US$ per 1 {base}, e.g. 0.65 for AUD)")
+    return nl[base] * usd_per_unit, af.get(base, 0.0) * usd_per_unit
+
+
 def build_order(intent: OrderIntent, contracts: dict[str, object], underlying: str, tif: str = "DAY"):
     """Return (ib contract, ib order) for an intent. `contracts` maps OCC symbol -> qualified Option."""
     from ib_async import ComboLeg, Contract, LimitOrder
@@ -79,15 +107,10 @@ class IBKRBroker:
 
     def account(self) -> Account:
         async def go():
-            return await self.s.ib.accountSummaryAsync(self.s.account)
-        values = self.s.call(go)
-
-        def tag(name: str) -> float:
-            for v in values:
-                if v.tag == name and v.currency in ("USD", "BASE", ""):
-                    return float(v.value)
-            return 0.0
-        return Account(tag("NetLiquidation"), tag("AvailableFunds"), us_market_open())
+            summary = await self.s.ib.accountSummaryAsync(self.s.account)
+            return summary, self.s.ib.accountValues(self.s.account)
+        summary, values = self.s.call(go)
+        return Account(*account_usd(summary, values, self.cfg.ibkr.usd_per_base), us_market_open())
 
     def broker_positions(self) -> dict[str, int]:
         async def go():

@@ -96,7 +96,10 @@ class IBSession:
                 except Exception:
                     pass
             self.ib = None
-            self.last_error = f"{self.cfg.host}:{self.cfg.port}: {e or type(e).__name__}"
+            why = str(e) or type(e).__name__
+            if isinstance(e, (TimeoutError, asyncio.TimeoutError)):
+                why += " (port open but no API answer: is IB Gateway logged in?)"
+            self.last_error = f"{self.cfg.host}:{self.cfg.port}: {why}"
             self._next_retry = time.monotonic() + RETRY_S
             raise GatewayUnavailable(f"IB Gateway not connected ({self.last_error})") from e
         self.last_error, self._next_retry = None, 0.0

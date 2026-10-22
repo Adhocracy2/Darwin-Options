@@ -14,6 +14,7 @@ ibkr:
   account: ""             # blank = the only account on the login
   market_data_type: 1     # 1 = live (needs OPRA options data subscription), 3 = delayed
   max_expiries: 2
+  usd_per_base: 0         # non-USD account (e.g. AUD): US$ per 1 unit of it, e.g. 0.65. Fallback only.
 
 universe: [SPY, QQQ, IWM]
 allow_new_entries: true

@@ -103,6 +103,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "ibkr-check":
         from .ibkr_check import run_check
 
+        cfg.ibkr.client_id += 2  # the trader holds client_id and the dashboard client_id + 1
         steps = run_check(cfg)
         for st in steps:
             print(f"[{'PASS' if st.ok else 'FAIL'}] {st.name}: {st.detail}")

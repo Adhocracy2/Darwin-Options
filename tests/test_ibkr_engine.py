@@ -68,6 +68,9 @@ class FakeIB:
         return [SimpleNamespace(tag="NetLiquidation", value="25000", currency="USD"),
                 SimpleNamespace(tag="AvailableFunds", value="20000", currency="USD")]
 
+    def accountValues(self, account=""):
+        return []
+
     async def reqPositionsAsync(self):
         return [SimpleNamespace(account=self.account, position=q,
                                 contract=_opt(s)) for s, q in self.positions.items() if q]
@@ -222,3 +225,26 @@ def test_dashboard_without_gateway(monkeypatch):
     assert r.status_code == 503 and "IB Gateway not connected" in r.json()["detail"]
     assert client.get("/api/positions").status_code == 200
     assert client.get("/api/settings").status_code == 200
+
+
+def test_gateway_timeout_message(monkeypatch):
+    async def hangs(self):
+        raise TimeoutError()
+    monkeypatch.setattr(IBSession, "_connect", hangs)
+    s = IBSession(Config(mode="paper").ibkr, live=False)
+    assert "TimeoutError" in s.last_error and "logged in" in s.last_error
+
+
+def test_account_in_aud_is_converted_to_usd():
+    from darwin_options.broker.ibkr import account_usd
+
+    def v(tag, value, cur):
+        return SimpleNamespace(tag=tag, value=value, currency=cur)
+    aud = [v("NetLiquidation", "1000000.00", "AUD"), v("AvailableFunds", "900000.00", "AUD")]
+    with pytest.raises(RuntimeError, match="usd_per_base"):
+        account_usd(aud, [])  # no rate anywhere: say so, never report $0
+    assert account_usd(aud, [], usd_per_base=0.65) == pytest.approx((650000, 585000))
+    # IBKR's own rate wins over the config fallback: 1.6 AUD per USD
+    assert account_usd(aud, [v("ExchangeRate", "1.6", "USD")], 0.65) == pytest.approx((625000, 562500))
+    usd = [v("NetLiquidation", "2500", "USD"), v("AvailableFunds", "2000", "USD")]
+    assert account_usd(usd, []) == (2500, 2000)

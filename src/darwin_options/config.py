@@ -180,6 +180,9 @@ class IBKRConfig:
     account: str = ""  # blank = the only account on the login
     market_data_type: int = 1  # 1 = live (needs OPRA subscription), 3 = delayed
     max_expiries: int = 2  # expiries fetched per chain request (keeps requests within IB pacing)
+    # Accounts not in US dollars (e.g. AUD): US dollars per 1 unit of the account's currency.
+    # Used only when IBKR doesn't report an exchange rate itself. Update it now and then.
+    usd_per_base: float = 0.0
     timeout_s: int = 60
 
 
