@@ -5,13 +5,14 @@ import logging
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Config, load_config
 from ..engine import Engine
 from ..factory import build_engine
+from ..ibkr import GatewayUnavailable
 from ..manager import ExitAction
 from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
@@ -30,6 +31,10 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     engine = engine or build_engine(cfg)
     app = FastAPI(title="Darwin Options")
 
+    @app.exception_handler(GatewayUnavailable)
+    def gateway_down(_req: Request, e: GatewayUnavailable):
+        return JSONResponse({"detail": str(e)}, status_code=503)
+
     def position_view(p) -> dict:
         d = p.to_dict()
         d["realized_pnl"] = round(p.realized_pnl(), 2)
@@ -47,9 +52,12 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     @app.get("/api/status")
     def status():
         engine.refresh_settings()
-        acct = engine.broker.account()
+        try:
+            account = asdict(engine.broker.account())
+        except GatewayUnavailable:
+            account = None
         return {"mode": cfg.mode, "data": cfg.data, "broker": engine.broker.name,
-                "account": asdict(acct), "universe": cfg.universe,
+                "account": account, "gateway": engine.gateway(), "universe": cfg.universe,
                 "allow_new_entries": cfg.allow_new_entries,
                 "strategies": [s.name for s in engine.strategies]}
 

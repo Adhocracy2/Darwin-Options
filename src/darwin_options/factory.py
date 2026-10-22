@@ -30,4 +30,6 @@ def build_engine(cfg: Config, store: Store | None = None) -> Engine:
         from .broker.ibkr import IBKRBroker
 
         broker = IBKRBroker(cfg, session, md)
-    return Engine(cfg, md, broker, store)
+    eng = Engine(cfg, md, broker, store)
+    eng.session = session
+    return eng

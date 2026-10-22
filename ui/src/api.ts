@@ -39,7 +39,8 @@ export type Status = {
   mode: string;
   data: string;
   broker: string;
-  account: { equity: number; buying_power: number; is_market_open: boolean };
+  account: { equity: number; buying_power: number; is_market_open: boolean } | null;
+  gateway: { connected: boolean; error: string | null } | null;
   universe: string[];
   allow_new_entries: boolean;
   strategies: string[];

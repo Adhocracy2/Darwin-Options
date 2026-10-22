@@ -51,7 +51,7 @@ renamed. Don't reintroduce "flick" names.
 - `roller.py`: rolling credit spreads out in time (one 4-leg combo).
 - `engine.py`: the cycle (reconcile → manage/roll → scan → gate → execute → snapshot); file lock
   so the trader and dashboard never trade at once; dashboard settings applied each cycle.
-- `ibkr.py`, `data/ibkr.py`, `broker/ibkr.py`: ib_async on its own event-loop thread. Combos are
+- `ibkr.py`, `data/ibkr.py`, `broker/ibkr.py`: ib_async on its own event-loop thread. Runs without IB Gateway: connect failures raise `GatewayUnavailable` (retry every 30s), cycles are skipped, the API returns 503 and `/api/status` reports `gateway`. Combos are
   BUY at a negative price for a credit. `broker/sim.py`: local simulator. `data/synthetic.py`:
   offline fake market (P&L meaningless).
 - `settings.py`: dashboard-editable strategy on/off and exit rules, stored in the DB.

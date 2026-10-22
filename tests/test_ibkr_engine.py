@@ -9,6 +9,7 @@ pytest.importorskip("ib_async")
 
 from darwin_options.broker.ibkr import IBKRBroker  # noqa: E402
 from darwin_options.data.ibkr import IBKRMarketData  # noqa: E402
+from darwin_options.config import Config  # noqa: E402
 from darwin_options.data.synthetic import SyntheticMarketData  # noqa: E402
 from darwin_options.engine import Engine  # noqa: E402
 from darwin_options.ibkr import IBSession, PaperAccountMismatch, from_ib_option  # noqa: E402
@@ -176,3 +177,48 @@ def test_paper_mode_refuses_live_account(cfg, monkeypatch):
     monkeypatch.setattr(IB, "disconnect", lambda self: None)
     with pytest.raises(PaperAccountMismatch):
         IBSession(cfg.ibkr, live=False)
+
+
+def test_runs_without_gateway(monkeypatch):
+    """No IB Gateway: Darwin starts, cycles are skipped, calls fail fast, and it reconnects later."""
+    import darwin_options.ibkr as ibkr_mod
+    from darwin_options.factory import build_engine
+    from darwin_options.ibkr import GatewayUnavailable
+
+    attempts = []
+
+    async def refused(self):
+        attempts.append(1)
+        raise ConnectionRefusedError("Connect call failed")
+    monkeypatch.setattr(IBSession, "_connect", refused)
+    cfg = Config(mode="paper", db_path=":memory:")
+    eng = build_engine(cfg)  # must not raise
+    assert eng.gateway() == {"connected": False, "error": eng.session.last_error}
+    assert "Connect call failed" in eng.session.last_error
+    assert "IB Gateway not connected" in eng.run_once(force=True)["skipped"]
+    assert len(attempts) == 1  # inside the retry window: no new connect attempt
+    with pytest.raises(GatewayUnavailable):
+        eng.broker.account()
+
+    monkeypatch.setattr(ibkr_mod, "RETRY_S", 0)
+    eng.session._next_retry = 0
+    with pytest.raises(GatewayUnavailable):
+        eng.broker.account()
+    assert len(attempts) == 2
+
+
+def test_dashboard_without_gateway(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from darwin_options.api.app import create_app
+
+    async def refused(self):
+        raise ConnectionRefusedError("Connect call failed")
+    monkeypatch.setattr(IBSession, "_connect", refused)
+    client = TestClient(create_app(Config(mode="paper", db_path=":memory:")))
+    s = client.get("/api/status").json()
+    assert s["account"] is None and s["gateway"]["connected"] is False
+    r = client.get("/api/risk")
+    assert r.status_code == 503 and "IB Gateway not connected" in r.json()["detail"]
+    assert client.get("/api/positions").status_code == 200
+    assert client.get("/api/settings").status_code == 200

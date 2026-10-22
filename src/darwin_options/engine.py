@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .broker.base import Broker
 from .config import Config
+from .ibkr import GatewayUnavailable
 from .data.base import MarketData, ScanCache
 from .manager import ExitAction, PositionManager
 from .models import Candidate, Fill, Leg, OptionContract, OrderIntent, Position, PositionLeg
@@ -55,6 +56,14 @@ def trim_scan(rows: list[dict], top: int = 150, per_strategy: int = 10) -> list[
 
 
 class Engine:
+    session = None  # IBSession when IBKR is used (set by factory.build_engine)
+
+    def gateway(self) -> dict | None:
+        """IB Gateway connection state for the dashboard; None when IBKR isn't used."""
+        if self.session is None:
+            return None
+        return {"connected": self.session.connected, "error": self.session.last_error}
+
     def __init__(self, cfg: Config, md: MarketData, broker: Broker, store: Store):
         self.cfg, self.md, self.broker, self.store = cfg, md, broker, store
         self.gate = RiskGate(cfg)
@@ -366,6 +375,13 @@ class Engine:
             return self._cycle(force)
 
     def _cycle(self, force: bool) -> dict:
+        try:
+            return self._run_cycle(force)
+        except GatewayUnavailable as e:
+            log.warning("cycle skipped: %s", e)
+            return {"skipped": str(e)}
+
+    def _run_cycle(self, force: bool) -> dict:
         self.refresh_settings()
         acct = self.broker.account()
         if not acct.is_market_open and not force:

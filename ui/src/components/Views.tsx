@@ -30,8 +30,8 @@ export function Overview({ status, positions, equity, perf }: { status: Status |
   return (
     <>
       <div className="tiles">
-        <div className="tile"><div className="label">Equity</div><div className="value">{usd(status?.account.equity)}</div></div>
-        <div className="tile"><div className="label">Buying power</div><div className="value">{usd(status?.account.buying_power)}</div></div>
+        <div className="tile"><div className="label">Equity</div><div className="value">{usd(status?.account?.equity)}</div></div>
+        <div className="tile"><div className="label">Buying power</div><div className="value">{usd(status?.account?.buying_power)}</div></div>
         <div className="tile"><div className="label">Open max loss</div><div className="value">{usd(openRisk)}</div></div>
         <div className="tile"><div className="label">Unrealized</div><div className="value"><Pnl v={unreal} /></div></div>
         <div className="tile"><div className="label">Realized (all time)</div><div className="value"><Pnl v={perf?.overall.total_pnl} /></div></div>

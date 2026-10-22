@@ -64,7 +64,9 @@ export default function App() {
         <div className="badges">
           {status && <>
             <span className={`badge ${status.mode === "live" ? "live" : ""}`}>{brokerLabel(status)}</span>
-            <span className="badge">{status.account.is_market_open ? "Market open" : "Market closed"}</span>
+            {status.gateway && !status.gateway.connected
+              ? <span className="badge live" title={status.gateway.error ?? ""}>IB Gateway offline</span>
+              : status.account && <span className="badge">{status.account.is_market_open ? "Market open" : "Market closed"}</span>}
             <span className="badge">{status.universe.join(" · ")}</span>
             {!status.allow_new_entries && <span className="badge">New entries off</span>}
           </>}

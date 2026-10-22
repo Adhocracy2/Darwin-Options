@@ -50,6 +50,8 @@ def run_check(cfg: Config, session=None, md=None, broker=None, symbol: str | Non
 
         def connect():
             conn["s"] = IBSession(cfg.ibkr, live=False)  # refuses a live (non-"D") account
+            if not conn["s"].connected:
+                return False, f"IB Gateway not connected ({conn['s'].last_error})"
             return True, f"{cfg.ibkr.host}:{cfg.ibkr.port}, paper account {conn['s'].account}"
         if not step("connect", connect):
             return steps
