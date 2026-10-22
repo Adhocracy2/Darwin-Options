@@ -189,6 +189,10 @@ class ExecutionConfig:
     slippage_frac: float = 0.25  # fraction of the half-spread we expect to give up vs mid
     commission_per_contract: float = 0.65
     fill_timeout_s: int = 45
+    # Stop trying new entries for the rest of a cycle after this many unfilled orders. Each
+    # attempt waits fill_timeout_s; on stale (delayed) prices they rarely fill, and trying
+    # candidate after candidate kept a cycle running for many minutes.
+    max_unfilled_entries_per_cycle: int = 2
 
 
 @dataclass

@@ -71,6 +71,7 @@ class Engine:
         self.manager = PositionManager(cfg)
         self.base_cfg = copy.deepcopy(cfg)  # config.yaml as loaded; dashboard settings go on top
         self._settings_version = 0
+        self.stop_requested = False  # set on SIGTERM: place no new orders, finish the cycle
         self._build_strategies()
         self.refresh_settings()
 
@@ -347,6 +348,7 @@ class Engine:
         opened: list[Position] = []
         rows: list[dict] = []
         touched: set[str] = set()
+        unfilled = 0
         acct = self.broker.account()
         positions = self.store.positions("open")
         state = self.risk_state(acct.equity)
@@ -354,6 +356,10 @@ class Engine:
             decision = self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state)
             if decision.approved and (c.underlying in touched or len(opened) >= self.cfg.max_new_trades_per_cycle):
                 decision.approved, decision.reasons = False, ["cycle limit / already traded this underlying"]
+            elif decision.approved and unfilled >= self.cfg.execution.max_unfilled_entries_per_cycle:
+                decision.approved, decision.reasons = False, [f"cycle limit: {unfilled} unfilled orders this cycle"]
+            elif decision.approved and self.stop_requested:
+                decision.approved, decision.reasons = False, ["stopping: no new orders"]
             rows.append(candidate_row(c, decision))
             if decision.approved and self.cfg.allow_new_entries:
                 try:
@@ -362,6 +368,8 @@ class Engine:
                     log.exception("open failed: %s", c.describe())
                     self.store.event("error", f"open {c.describe()}: {e}")
                     continue
+                if pos is None:
+                    unfilled += 1
                 if pos:
                     opened.append(pos)
                     touched.add(c.underlying)

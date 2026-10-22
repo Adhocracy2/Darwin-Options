@@ -70,3 +70,21 @@ def test_api_endpoints(engine):
     assert client.get("/api/performance").json()["overall"]["trades"] == 1
     assert client.get("/api/events").json()
     assert client.get("/api/equity").json()
+
+
+def test_stops_trying_entries_after_unfilled_orders(engine):
+    """Unfilled entry orders each wait for a fill; after a couple, the cycle stops trying."""
+    submits = []
+    engine.broker.submit = lambda intent: submits.append(intent) or None  # never fills
+    engine.cfg.max_new_trades_per_cycle = 5
+    engine.open_new()
+    assert len(submits) == engine.cfg.execution.max_unfilled_entries_per_cycle == 2
+    assert any("unfilled orders" in r for row in engine.store.latest_scan()["candidates"] for r in row["reasons"])
+
+
+def test_no_new_orders_once_stop_requested(engine):
+    submits = []
+    engine.broker.submit = lambda intent: submits.append(intent) or None
+    engine.stop_requested = True
+    engine.open_new()
+    assert submits == []

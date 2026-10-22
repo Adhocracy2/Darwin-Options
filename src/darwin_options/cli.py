@@ -28,8 +28,9 @@ def run_loop(eng, interval: int, log, max_cycles: int | None = None) -> None:
     stop = threading.Event()
 
     def request_stop(signum, _frame):
-        log.info("signal %s: stopping after the current cycle", signum)
+        log.info("signal %s: stopping after the current cycle (no new orders)", signum)
         stop.set()
+        eng.stop_requested = True
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     cycles = 0
