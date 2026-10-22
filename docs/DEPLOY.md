@@ -93,38 +93,6 @@ journalctl -u darwin-trader -f
 Dashboard: http://127.0.0.1:8000 on the PC. From another machine:
 `ssh -L 8000:127.0.0.1:8000 you@trading-pc`, then open http://127.0.0.1:8000.
 
-## Running on an Oracle Cloud Ampere A1 server
-
-An A1 instance is just another Ubuntu machine, so everything above applies. It's ARM (aarch64):
-the runner, Python, Node, the dashboard and the IB Gateway Docker image all support it.
-
-1. **Create the instance:** OCI Console → Compute → Instances → Create.
-   - Image: **Canonical Ubuntu 24.04**
-   - Shape: **VM.Standard.A1.Flex**, e.g. 2 OCPUs / 12 GB (the free tier allows up to 4 / 24)
-   - Add your SSH public key. Keep the default network rules: only SSH (22) open.
-2. **Connect:** `ssh ubuntu@<public-ip>`
-3. **IB Gateway in Docker** (it has no screen, so it logs in automatically via IBC):
-   ```bash
-   sudo apt install -y docker.io docker-compose-v2 && sudo usermod -aG docker "$USER" && newgrp docker
-   ```
-   then follow the comments in `deploy/ib-gateway/docker-compose.yml` (paper username/password in its `.env`).
-4. **Darwin Options:** run the one-script setup above (`scripts/setup-pc.sh`), or install Claude
-   Code on the server and give it the same instructions you'd give on a PC.
-5. **Dashboard:** don't open port 8000. From your own computer:
-   `ssh -L 8000:127.0.0.1:8000 ubuntu@<public-ip>`, then browse to http://127.0.0.1:8000.
-
-Things specific to Oracle's free tier:
-- **Idle reclaim:** Oracle may reclaim Always Free instances that stay nearly idle for a week, and a
-  trading bot uses very little CPU. Upgrading the account to Pay As You Go (you still pay nothing
-  within the free limits) stops idle reclaim. Check Oracle's current policy.
-- **"Out of host capacity"** when creating A1 instances is common on free accounts; retry later,
-  try another availability domain, or upgrade to Pay As You Go.
-- **One deploy target:** the deploy workflow sends each deploy to *one* machine with the
-  `darwin-pc` label. Register either the PC or the A1 server, not both (or remove the old runner
-  under Settings → Actions → Runners).
-- **IBKR logins:** IB Gateway restarts daily without a new login, but IBKR requires a fresh login
-  about once a week. With 2FA on the account, approve it on the IBKR Mobile app when asked.
-
 ## Day to day
 
 - **Deploy:** merge a pull request into `main`. Watch it under **Actions**.
