@@ -8,7 +8,7 @@ ports, and it only runs this repo's deploy workflow (the repo is private, and pu
 merge to main ──> CI on GitHub (lint, 100+ tests, UI build)
                     └─ passes ──> runner on your PC: scripts/deploy.sh
                                     build + test a new release folder
-                                    switch ~/flick/current to it
+                                    switch ~/darwin/current to it
                                     restart services (trader finishes its cycle first)
                                     health check, roll back if it fails
 ```
@@ -17,18 +17,18 @@ merge to main ──> CI on GitHub (lint, 100+ tests, UI build)
 
 ```bash
 gh auth login                      # once, so the private repo can be cloned and the runner registered
-git clone https://github.com/Adhocracy2/Booger-Flick.git && cd Booger-Flick
+git clone https://github.com/Adhocracy2/Darwin-Options.git && cd Darwin-Options
 scripts/setup-pc.sh
 ```
 
 `setup-pc.sh` does steps 1–4 below: installs prerequisites, registers the PC as a runner
-labelled `flick-pc` and runs it as a service, does the first deploy into `~/flick`, and installs
-the Flick services. It asks for your sudo password, and for a runner token if the GitHub CLI isn't
+labelled `darwin-pc` and runs it as a service, does the first deploy into `~/darwin`, and installs
+the Darwin Options services. It asks for your sudo password, and for a runner token if the GitHub CLI isn't
 logged in. Re-running it skips whatever is already done.
 
 ## One-time setup by hand (about 15 minutes)
 
-Do all of this as the normal Linux user that will run Flick (not root).
+Do all of this as the normal Linux user that will run Darwin Options (not root).
 
 ### 1. Install prerequisites
 
@@ -46,7 +46,7 @@ sudo apt install -y nodejs
    such as `~/actions-runner`. When `config.sh` asks:
    - runner group: press Enter
    - name: e.g. `trading-pc`
-   - **additional labels: `flick-pc`** (the deploy workflow looks for this label)
+   - **additional labels: `darwin-pc`** (the deploy workflow looks for this label)
    - work folder: press Enter
 3. Install it as a service so it starts on boot, running as **your** user:
    ```bash
@@ -62,11 +62,11 @@ On GitHub: **Actions → Deploy to trading PC → Run workflow** (choose `main`)
 request into `main`. The first run creates:
 
 ```
-~/flick/shared/config.yaml   your settings (seeded from config.example.yaml)
-~/flick/shared/.env          secrets, e.g. FLICK_ALLOW_LIVE (chmod 600)
-~/flick/shared/var/          trade journal (flick.db) and logs
-~/flick/releases/<time>-<sha>/
-~/flick/current -> the release in use
+~/darwin/shared/config.yaml   your settings (seeded from config.example.yaml)
+~/darwin/shared/.env          secrets, e.g. DARWIN_ALLOW_LIVE (chmod 600)
+~/darwin/shared/var/          trade journal (darwin.db) and logs
+~/darwin/releases/<time>-<sha>/
+~/darwin/current -> the release in use
 ```
 
 Deploys never overwrite anything in `shared/`.
@@ -74,20 +74,20 @@ Deploys never overwrite anything in `shared/`.
 ### 4. Configure, then install the services (once)
 
 ```bash
-nano ~/flick/shared/config.yaml        # mode: paper, ibkr port, capital, pilot, ...
-sudo ~/flick/current/scripts/install-services.sh
+nano ~/darwin/shared/config.yaml        # mode: paper, ibkr port, capital, pilot, ...
+sudo ~/darwin/current/scripts/install-services.sh
 ```
 
-This installs `flick-trader` and `flick-web` and adds a sudoers rule that lets your user restart
+This installs `darwin-trader` and `darwin-web` and adds a sudoers rule that lets your user restart
 exactly those two services without a password, which the runner needs. From now on every
 deploy restarts them automatically.
 
 ### 5. Check it
 
 ```bash
-cd ~/flick/current && .venv/bin/flick ibkr-check     # IB Gateway must be running (see README)
-systemctl status flick-trader flick-web
-journalctl -u flick-trader -f
+cd ~/darwin/current && .venv/bin/darwin ibkr-check     # IB Gateway must be running (see README)
+systemctl status darwin-trader darwin-web
+journalctl -u darwin-trader -f
 ```
 
 Dashboard: http://127.0.0.1:8000 on the PC. From another machine:
@@ -101,11 +101,11 @@ Dashboard: http://127.0.0.1:8000 on the PC. From another machine:
   yourself as a required reviewer. Each deploy then waits for your click.
 - **Roll back by hand:** point `current` at an earlier release and restart:
   ```bash
-  ls ~/flick/releases
-  ln -sfn ~/flick/releases/<older> ~/flick/current
-  sudo systemctl restart flick-trader flick-web
+  ls ~/darwin/releases
+  ln -sfn ~/darwin/releases/<older> ~/darwin/current
+  sudo systemctl restart darwin-trader darwin-web
   ```
-- **Which version is running:** `cat ~/flick/current/REVISION`
+- **Which version is running:** `cat ~/darwin/current/REVISION`
 
 ## What a deploy does (scripts/deploy.sh)
 
@@ -117,7 +117,7 @@ Dashboard: http://127.0.0.1:8000 on the PC. From another machine:
    waiting for a fill is completed or cancelled, never abandoned.
 6. Waits 15 seconds and checks both services. If one crashed, it switches back to the previous
    release, restarts, and the workflow fails so you see it.
-7. Keeps the last 3 releases (`FLICK_KEEP_RELEASES`).
+7. Keeps the last 3 releases (`DARWIN_KEEP_RELEASES`).
 
 If anything in steps 1–3 fails, nothing changes on the PC; the running version keeps running.
 
@@ -125,7 +125,7 @@ If anything in steps 1–3 fails, nothing changes on the PC; the running version
 
 | Symptom | Fix |
 |---|---|
-| Deploy job stuck on "Waiting for a runner" | Runner offline: `sudo ~/actions-runner/svc.sh status`, check the `flick-pc` label |
+| Deploy job stuck on "Waiting for a runner" | Runner offline: `sudo ~/actions-runner/svc.sh status`, check the `darwin-pc` label |
 | `sudo: a password is required` during deploy | Run step 4 (`install-services.sh`) once |
-| `config.yaml doesn't load with this release` | A setting changed name; compare with `~/flick/current/config.example.yaml` |
-| Services `activating` after deploy | Usually IB Gateway isn't running or logged in; `journalctl -u flick-trader -n 50` |
+| `config.yaml doesn't load with this release` | A setting changed name; compare with `~/darwin/current/config.example.yaml` |
+| Services `activating` after deploy | Usually IB Gateway isn't running or logged in; `journalctl -u darwin-trader -n 50` |

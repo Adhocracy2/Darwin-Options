@@ -9,7 +9,7 @@ import time
 def test_sigterm_stops_after_current_cycle(tmp_path):
     cfg = tmp_path / "c.yaml"
     cfg.write_text(f"mode: sim\ndata: synthetic\ndb_path: {tmp_path}/t.db\nlog_path: {tmp_path}/t.log\n")
-    proc = subprocess.Popen([sys.executable, "-m", "flick.cli", "-c", str(cfg), "loop", "--interval", "300"],
+    proc = subprocess.Popen([sys.executable, "-m", "darwin_options.cli", "-c", str(cfg), "loop", "--interval", "300"],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     log = tmp_path / "t.log"
     deadline = time.time() + 60

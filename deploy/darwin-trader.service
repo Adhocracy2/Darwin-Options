@@ -1,13 +1,13 @@
 [Unit]
-Description=Flick options trader (manage, scan, trade every 5 minutes while the market is open)
+Description=Darwin Options options trader (manage, scan, trade every 5 minutes while the market is open)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 User=@USER@
-WorkingDirectory=@FLICK_HOME@/current
-EnvironmentFile=@FLICK_HOME@/shared/.env
-ExecStart=@FLICK_HOME@/current/.venv/bin/flick loop --interval 300
+WorkingDirectory=@DARWIN_HOME@/current
+EnvironmentFile=@DARWIN_HOME@/shared/.env
+ExecStart=@DARWIN_HOME@/current/.venv/bin/darwin loop --interval 300
 # On stop (e.g. a deploy) the loop finishes its current cycle before exiting, so an order
 # waiting for a fill is completed or cancelled first. Give it time to do so.
 KillSignal=SIGTERM

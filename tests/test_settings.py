@@ -2,8 +2,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from flick.api.app import create_app
-from flick.settings import SettingsError, validate
+from darwin_options.api.app import create_app
+from darwin_options.settings import SettingsError, validate
 
 
 def test_validate_rejects_out_of_range_and_unknown():
@@ -49,7 +49,7 @@ def test_trader_picks_up_settings_saved_by_dashboard(engine):
     """Two engines on one database, like the systemd trader and web services."""
     import copy
 
-    from flick.engine import Engine
+    from darwin_options.engine import Engine
 
     web = Engine(copy.deepcopy(engine.base_cfg), engine.md, engine.broker, engine.store)
     web.update_settings({"allow_new_entries": False, "strategies": {"credit_spread": {"exit": {"stop_loss_mult": 1.5}}}})

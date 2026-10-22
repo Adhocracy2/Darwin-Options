@@ -2,8 +2,8 @@ from datetime import date
 
 import pytest
 
-from flick.models import Candidate, Leg, OptionContract, Position, PositionLeg, Right
-from flick.risk import NakedShortError, RiskGate, assert_never_naked, uncovered_shorts
+from darwin_options.models import Candidate, Leg, OptionContract, Position, PositionLeg, Right
+from darwin_options.risk import NakedShortError, RiskGate, assert_never_naked, uncovered_shorts
 
 TODAY = date(2026, 10, 21)
 
@@ -102,7 +102,7 @@ def test_attach_refused_when_already_covered(cfg):
 
 
 def test_config_overrides_merge_from_yaml(tmp_path):
-    from flick.config import load_config
+    from darwin_options.config import load_config
 
     p = tmp_path / "c.yaml"
     p.write_text("management:\n  overrides:\n    calendar: {close_at_dte: 7}\n    iron_condor: {take_profit_pct: 0.4}\n")

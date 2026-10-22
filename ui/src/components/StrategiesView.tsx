@@ -73,11 +73,11 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [payoffs, setPayoffs] = useState<Record<string, StrategyPayoff>>({});
   const [showHelp, setShowHelp] = useState<boolean>(() => {
-    try { return localStorage.getItem("flick.showHelp") === "1"; } catch { return false; }
+    try { return localStorage.getItem("darwin.showHelp") === "1"; } catch { return false; }
   });
   const toggleHelp = (v: boolean) => {
     setShowHelp(v);
-    try { localStorage.setItem("flick.showHelp", v ? "1" : "0"); } catch { /* storage unavailable */ }
+    try { localStorage.setItem("darwin.showHelp", v ? "1" : "0"); } catch { /* storage unavailable */ }
   };
 
   // Diagrams are fetched separately so the settings form never waits on market data.

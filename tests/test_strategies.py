@@ -1,10 +1,10 @@
 import pytest
 
-from flick.models import Right
-from flick.risk import uncovered_shorts
-from flick.strategies.base import StrategyContext
-from flick.strategies.credit_spread import CreditSpread
-from flick.strategies.leaps_call import LeapsCall
+from darwin_options.models import Right
+from darwin_options.risk import uncovered_shorts
+from darwin_options.strategies.base import StrategyContext
+from darwin_options.strategies.credit_spread import CreditSpread
+from darwin_options.strategies.leaps_call import LeapsCall
 from conftest import TODAY
 
 
@@ -38,10 +38,10 @@ def test_leaps_open_candidates_cannot_lose_on_assignment(cfg, md):
 
 # ---- iron condor, iron butterfly, calendar -------------------------------------
 
-from flick.models import MULTIPLIER  # noqa: E402
-from flick.strategies.calendar import Calendar  # noqa: E402
-from flick.strategies.iron_butterfly import IronButterfly  # noqa: E402
-from flick.strategies.iron_condor import IronCondor  # noqa: E402
+from darwin_options.models import MULTIPLIER  # noqa: E402
+from darwin_options.strategies.calendar import Calendar  # noqa: E402
+from darwin_options.strategies.iron_butterfly import IronButterfly  # noqa: E402
+from darwin_options.strategies.iron_condor import IronCondor  # noqa: E402
 
 
 def worst_expiry_pnl(c):

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from flick.api.app import create_app
-from flick.risk import holdings_of, uncovered_shorts
+from darwin_options.api.app import create_app
+from darwin_options.risk import holdings_of, uncovered_shorts
 
 
 def never_naked(engine):

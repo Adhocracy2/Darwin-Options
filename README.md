@@ -1,4 +1,4 @@
-# Booger-Flick
+# DARWIN OPTIONS
 
 An options trading system that scans, analyses, paper-trades and manages
 defined-risk options trades through **Interactive Brokers (IBKR)**, with a React dashboard.
@@ -30,8 +30,8 @@ naked puts, ratio spreads.
 | **Never assigned.** Short legs are closed (crossing the spread if needed) when the strike is threatened, when extrinsic value drops below `min_short_extrinsic` while in the money, at `close_at_dte`, and in all cases before the last day. Iron butterflies and calendars start with at-the-money shorts, so for them only the extrinsic-value and DTE checks apply. | `manager.py` |
 | **LEAPS calls can't lose on assignment.** The short strike must be above LEAPS strike + net cost. | `strategies/leaps_call.py` |
 | **Closes buy back shorts first.** Combo orders list buys first. If an urgent combo close doesn't fill, legs are closed one at a time, shorts first. | `broker/ibkr.py` |
-| **Live trading is opt-in twice.** It needs `mode: live` *and* `FLICK_ALLOW_LIVE=yes-i-understand-real-money` in `.env`. | `config.py` |
-| **Paper means paper.** In paper or sim mode Flick refuses to connect if the gateway is logged into a live account (IBKR paper account ids start with "D"). | `ibkr.py` |
+| **Live trading is opt-in twice.** It needs `mode: live` *and* `DARWIN_ALLOW_LIVE=yes-i-understand-real-money` in `.env`. | `config.py` |
+| **Paper means paper.** In paper or sim mode Darwin Options refuses to connect if the gateway is logged into a live account (IBKR paper account ids start with "D"). | `ibkr.py` |
 | **No new trades while the journal and IBKR disagree.** | `engine.py` (`reconcile`) |
 
 ## How it works
@@ -51,7 +51,7 @@ Each cycle (every 5 minutes while the market is open):
 6. **Snapshot** equity, open risk and P&L for the dashboard.
 
 ```
-src/flick/
+src/darwin_options/
   config.py            settings (config.yaml + .env)
   models.py            contracts, quotes, legs, candidates, positions
   pricing.py           Black-Scholes, greeks, IV, probabilities, realized vol
@@ -66,7 +66,7 @@ src/flick/
   store.py             SQLite journal
   report.py            win rate, expectancy, profit factor, drawdown
   api/app.py           FastAPI backend for the dashboard
-  cli.py               `flick` command
+  cli.py               `darwin` command
 ui/                    React + Vite dashboard
 deploy/, scripts/      deploy script, systemd units, IB Gateway (Docker)
 .github/workflows/     CI on every push; deploy to the trading PC on merge to main
@@ -83,7 +83,7 @@ docs/DEPLOY.md         setting up the PC and the GitHub runner
 
 ### 2. IB Gateway
 
-Flick needs no API keys. It talks to a running, logged-in **IB Gateway** (or TWS) on the same machine.
+Darwin Options needs no API keys. It talks to a running, logged-in **IB Gateway** (or TWS) on the same machine.
 The simplest headless setup is Docker with automatic login:
 
 ```bash
@@ -96,7 +96,7 @@ sudo docker compose up -d
 Approve the login on the IBKR mobile app if asked. The paper API is then on `127.0.0.1:4002`.
 Alternatively, install IB Gateway from ibkr.com and enable the API on port 4002 in its settings.
 
-### 3. Flick
+### 3. Darwin Options
 
 **On the trading PC, deploy with GitHub Actions:** see [docs/DEPLOY.md](docs/DEPLOY.md). Every
 merge to `main` is tested and deployed automatically, with rollback.
@@ -105,8 +105,8 @@ merge to `main` is tested and deployed automatically, with rollback.
 
 ```bash
 scripts/install.sh           # venv, deps, builds the UI, runs tests
-.venv/bin/flick check        # connectivity
-.venv/bin/flick scan         # ranked candidates and why each passes/fails the risk gate
+.venv/bin/darwin check        # connectivity
+.venv/bin/darwin scan         # ranked candidates and why each passes/fails the risk gate
 ```
 
 ### IBKR notes
@@ -114,7 +114,7 @@ scripts/install.sh           # venv, deps, builds the UI, runs tests
 - IBKR prices a credit spread as a combo **BUY at a negative price** (a 1.10 credit is `BUY @ -1.10`).
   This is handled for you and tested.
 - The trader uses `ibkr.client_id`, the dashboard uses `client_id + 1`, so both can connect at once.
-- IB Gateway restarts once a day. Flick reconnects on the next cycle.
+- IB Gateway restarts once a day. Darwin Options reconnects on the next cycle.
 - Open interest isn't fetched from IBKR, so that filter is skipped. The bid/ask spread filter still applies.
 - To keep request counts within IBKR's limits, chains are cut to the nearest `ibkr.max_expiries` expiries
   and to strikes with an estimated delta between 0.03 and 0.97.
@@ -122,7 +122,7 @@ scripts/install.sh           # venv, deps, builds the UI, runs tests
 
 ## Dashboard
 
-`flick serve` serves the built UI and API at <http://127.0.0.1:8000>. It binds to localhost because
+`darwin serve` serves the built UI and API at <http://127.0.0.1:8000>. It binds to localhost because
 it can place trades and has no login. Use an SSH tunnel (`ssh -L 8000:127.0.0.1:8000 box`) to view it remotely.
 
 Tabs: Overview (equity, risk, P&L), Positions (with manual close), Scanner (candidates + risk gate
@@ -168,7 +168,7 @@ can't trade them live. The system will also refuse trades whose max loss exceeds
 ### Checking IBKR paper trading
 
 ```bash
-.venv/bin/flick ibkr-check
+.venv/bin/darwin ibkr-check
 ```
 
 Connects to your paper account, reads equity, pulls a price and an option chain, then places a
@@ -188,7 +188,7 @@ old position closes with reason "rolled", so the review can tell whether rolling
 
 ### Trade review
 
-`flick review` (and the card at the top of the Performance tab) groups your closed trades by their
+`darwin review` (and the card at the top of the Performance tab) groups your closed trades by their
 conditions at entry: short delta, days to expiry, credit as % of width, implied ÷ realized
 volatility, and exit reason. It compares the model's predicted win rate with the actual one.
 It suggests a setting change only when a group has 20+ trades and the difference is larger than
@@ -224,14 +224,14 @@ model that ranks trades.
   Every change is logged in the Journal.
 - Never-naked, max-loss and sizing limits are not editable from the dashboard. Change those in `config.yaml`.
 
-For UI development: `flick serve` in one terminal, `cd ui && npm run dev` in another.
+For UI development: `darwin serve` in one terminal, `cd ui && npm run dev` in another.
 
 ## Try it offline
 
 ```bash
 printf 'mode: sim\ndata: synthetic\n' > /tmp/sim.yaml
-.venv/bin/flick -c /tmp/sim.yaml scan
-.venv/bin/flick -c /tmp/sim.yaml serve
+.venv/bin/darwin -c /tmp/sim.yaml scan
+.venv/bin/darwin -c /tmp/sim.yaml serve
 ```
 
 Synthetic data is for checking that everything runs. Its P&L means nothing.
@@ -241,13 +241,13 @@ Synthetic data is for checking that everything runs. Its P&L means nothing.
 
 | Command | |
 |---|---|
-| `flick check` | test the IBKR connection |
-| `flick scan` | scan + risk-check, no trading |
-| `flick run [--force]` | one full cycle |
-| `flick loop --interval 300` | run forever (what the service does) |
-| `flick serve` | API + dashboard |
-| `flick positions` / `flick report` | open positions / performance |
-| `flick close <id>` | close a position now |
+| `darwin check` | test the IBKR connection |
+| `darwin scan` | scan + risk-check, no trading |
+| `darwin run [--force]` | one full cycle |
+| `darwin loop --interval 300` | run forever (what the service does) |
+| `darwin serve` | API + dashboard |
+| `darwin positions` / `darwin report` | open positions / performance |
+| `darwin close <id>` | close a position now |
 
 ## Before trusting it
 

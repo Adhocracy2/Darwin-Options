@@ -21,9 +21,9 @@ jobs:
 
   deploy:
     needs: test
-    # Your Ubuntu PC, registered as a self-hosted runner with the label "flick-pc".
+    # Your Ubuntu PC, registered as a self-hosted runner with the label "darwin-pc".
     # Never runs for pull requests or forks; only pushes to main or a manual run by you.
-    runs-on: [self-hosted, linux, flick-pc]
+    runs-on: [self-hosted, linux, darwin-pc]
     # Optional: add required reviewers to the "trading-pc" environment in repo settings
     # to approve each deploy by hand.
     environment: trading-pc

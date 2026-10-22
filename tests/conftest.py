@@ -2,11 +2,11 @@ from datetime import date
 
 import pytest
 
-from flick.broker.sim import SimBroker
-from flick.config import Config
-from flick.data.synthetic import SyntheticMarketData
-from flick.engine import Engine
-from flick.store import Store
+from darwin_options.broker.sim import SimBroker
+from darwin_options.config import Config
+from darwin_options.data.synthetic import SyntheticMarketData
+from darwin_options.engine import Engine
+from darwin_options.store import Store
 
 TODAY = date(2026, 10, 21)
 

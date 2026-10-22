@@ -2,10 +2,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from flick.config import RiskConfig
-from flick.models import Candidate, Leg, OptionContract, Position, PositionLeg, Right
-from flick.portfolio import assess, kelly_fraction, stage_for
-from flick.risk import RiskGate
+from darwin_options.config import RiskConfig
+from darwin_options.models import Candidate, Leg, OptionContract, Position, PositionLeg, Right
+from darwin_options.portfolio import assess, kelly_fraction, stage_for
+from darwin_options.risk import RiskGate
 
 NOW = datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc)  # 2pm New York
 
@@ -94,7 +94,7 @@ def test_halt_blocks_new_entries(cfg):
 def test_risk_api_and_reset(engine):
     from fastapi.testclient import TestClient
 
-    from flick.api.app import create_app
+    from darwin_options.api.app import create_app
 
     client = TestClient(create_app(engine.cfg, engine))
     client.post("/api/scan")

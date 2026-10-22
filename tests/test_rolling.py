@@ -1,9 +1,9 @@
 """Rolling credit spreads instead of closing them, only when it's paid for and passes the risk gate."""
-from flick.manager import ExitAction
-from flick.models import OptionContract, Position, PositionLeg, Right
-from flick.risk import holdings_of, uncovered_shorts
-from flick.roller import find_roll
-from flick.strategies.base import StrategyContext
+from darwin_options.manager import ExitAction
+from darwin_options.models import OptionContract, Position, PositionLeg, Right
+from darwin_options.risk import holdings_of, uncovered_shorts
+from darwin_options.roller import find_roll
+from darwin_options.strategies.base import StrategyContext
 
 
 def put_spread(engine, md, short_k=470, width=5, dte_days=14):

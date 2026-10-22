@@ -1,7 +1,7 @@
 from datetime import date
 
-from flick.manager import PositionManager
-from flick.models import OptionContract, Position, PositionLeg, Right
+from darwin_options.manager import PositionManager
+from darwin_options.models import OptionContract, Position, PositionLeg, Right
 
 TODAY = date(2026, 10, 21)
 EXP = date(2026, 12, 4)  # 44 DTE

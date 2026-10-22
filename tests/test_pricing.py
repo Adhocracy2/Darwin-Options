@@ -3,8 +3,8 @@ from datetime import date
 
 import pytest
 
-from flick import pricing
-from flick.models import OptionContract, Right
+from darwin_options import pricing
+from darwin_options.models import OptionContract, Right
 
 
 def test_put_call_parity():
@@ -45,8 +45,8 @@ def test_occ_roundtrip():
 
 
 def test_ev_counts_only_decay_until_planned_exit():
-    from flick.analysis import evaluate
-    from flick.models import Leg
+    from darwin_options.analysis import evaluate
+    from darwin_options.models import Leg
 
     today = date(2026, 10, 21)
     exp = date(2026, 12, 4)  # 44 DTE

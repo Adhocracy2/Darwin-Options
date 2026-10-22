@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # One-shot setup of the trading PC for CI/CD. Safe to re-run: finished steps are skipped.
 #
-#   git clone https://github.com/Adhocracy2/Booger-Flick.git && cd Booger-Flick
+#   git clone https://github.com/Adhocracy2/Darwin-Options.git && cd Darwin-Options
 #   scripts/setup-pc.sh
 #
 # Run as your normal user (not root); it uses sudo where needed. It:
 #   1. installs Python, venv and Node.js 22 if missing
-#   2. registers this PC as a GitHub Actions self-hosted runner (label: flick-pc) and runs it
+#   2. registers this PC as a GitHub Actions self-hosted runner (label: darwin-pc) and runs it
 #      as a service under your user
-#   3. does a first deploy from this clone into ~/flick (build, test, switch)
-#   4. installs the flick-trader and flick-web services and the narrow sudoers rule deploys need
+#   3. does a first deploy from this clone into ~/darwin (build, test, switch)
+#   4. installs the darwin-trader and darwin-web services and the narrow sudoers rule deploys need
 #
 # The runner registration token comes from the GitHub CLI if it's logged in (`gh auth login`),
 # otherwise paste it from: repo → Settings → Actions → Runners → New self-hosted runner.
@@ -18,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 SRC="$(pwd)"
 RUNNER_DIR="${RUNNER_DIR:-$HOME/actions-runner}"
-FLICK_HOME="${FLICK_HOME:-$HOME/flick}"
+DARWIN_HOME="${DARWIN_HOME:-$HOME/darwin}"
 say() { printf '\n==> %s\n' "$*"; }
 
 remote="$(git remote get-url origin)"
@@ -57,38 +57,38 @@ else
     read -r -p "Runner token: " token
   fi
   (cd "$RUNNER_DIR" && ./config.sh --unattended --replace --url "https://github.com/$REPO" --token "$token" \
-     --name "$(hostname)-flick" --labels flick-pc --work _work)
+     --name "$(hostname)-darwin" --labels darwin-pc --work _work)
   (cd "$RUNNER_DIR" && sudo ./svc.sh install "$USER" && sudo ./svc.sh start)
 fi
 (cd "$RUNNER_DIR" && sudo ./svc.sh status | grep -E "Active:" || true)
 
 # ---- 3. first deploy --------------------------------------------------------------------
-say "First deploy into $FLICK_HOME"
-if [ -e "$FLICK_HOME/current" ]; then
-  echo "Already deployed: $(cat "$FLICK_HOME/current/REVISION" 2>/dev/null | cut -c1-12). Later deploys come from GitHub."
+say "First deploy into $DARWIN_HOME"
+if [ -e "$DARWIN_HOME/current" ]; then
+  echo "Already deployed: $(cat "$DARWIN_HOME/current/REVISION" 2>/dev/null | cut -c1-12). Later deploys come from GitHub."
 else
-  FLICK_HOME="$FLICK_HOME" scripts/deploy.sh "$SRC"
+  DARWIN_HOME="$DARWIN_HOME" scripts/deploy.sh "$SRC"
 fi
 
 # ---- 4. services ----------------------------------------------------------------------
 say "Services"
-if systemctl list-unit-files flick-trader.service 2>/dev/null | grep -q flick-trader; then
+if systemctl list-unit-files darwin-trader.service 2>/dev/null | grep -q darwin-trader; then
   echo "Already installed."
 else
-  echo "Settings are in $FLICK_HOME/shared/config.yaml (defaults: paper mode, \$500 trading capital, pilot on)."
-  sudo FLICK_HOME="$FLICK_HOME" "$FLICK_HOME/current/scripts/install-services.sh" "$USER"
+  echo "Settings are in $DARWIN_HOME/shared/config.yaml (defaults: paper mode, \$500 trading capital, pilot on)."
+  sudo DARWIN_HOME="$DARWIN_HOME" "$DARWIN_HOME/current/scripts/install-services.sh" "$USER"
 fi
 
 cat <<EOF
 
 Setup complete.
   Runner:     shows as Idle at https://github.com/$REPO/settings/actions/runners
-  Deployed:   $(cat "$FLICK_HOME/current/REVISION" | cut -c1-12) in $FLICK_HOME/current
+  Deployed:   $(cat "$DARWIN_HOME/current/REVISION" | cut -c1-12) in $DARWIN_HOME/current
   Dashboard:  http://127.0.0.1:8000
-  Logs:       journalctl -u flick-trader -f
+  Logs:       journalctl -u darwin-trader -f
 
 Next:
   - Start IB Gateway logged into your PAPER account (see deploy/ib-gateway), then:
-      cd $FLICK_HOME/current && .venv/bin/flick ibkr-check
+      cd $DARWIN_HOME/current && .venv/bin/darwin ibkr-check
   - Merge to main on GitHub: CI runs, then this PC deploys it automatically.
 EOF

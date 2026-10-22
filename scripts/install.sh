@@ -25,6 +25,6 @@ mkdir -p var
 echo
 echo "Done. Next:"
 echo "  1. Start IB Gateway logged into your paper account (see deploy/ib-gateway)"
-echo "  2. .venv/bin/flick check"
-echo "  3. .venv/bin/flick scan"
+echo "  2. .venv/bin/darwin check"
+echo "  3. .venv/bin/darwin scan"
 echo "For the trading PC, deploy with GitHub Actions instead: docs/DEPLOY.md"

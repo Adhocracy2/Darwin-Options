@@ -28,7 +28,7 @@ UI_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
 def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastAPI:
     cfg = cfg or load_config()
     engine = engine or build_engine(cfg)
-    app = FastAPI(title="Flick")
+    app = FastAPI(title="Darwin Options")
 
     def position_view(p) -> dict:
         d = p.to_dict()

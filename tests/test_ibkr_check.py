@@ -1,11 +1,11 @@
-"""`flick ibkr-check` against a fake gateway that behaves like IBKR: accept, then cancel on request."""
+"""`darwin ibkr-check` against a fake gateway that behaves like IBKR: accept, then cancel on request."""
 from types import SimpleNamespace
 
 import pytest
 
 pytest.importorskip("ib_async")
 
-from flick.ibkr_check import run_check  # noqa: E402
+from darwin_options.ibkr_check import run_check  # noqa: E402
 from test_ibkr_engine import make_ib_engine  # noqa: E402
 
 

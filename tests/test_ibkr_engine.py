@@ -7,14 +7,14 @@ import pytest
 
 pytest.importorskip("ib_async")
 
-from flick.broker.ibkr import IBKRBroker  # noqa: E402
-from flick.data.ibkr import IBKRMarketData  # noqa: E402
-from flick.data.synthetic import SyntheticMarketData  # noqa: E402
-from flick.engine import Engine  # noqa: E402
-from flick.ibkr import IBSession, PaperAccountMismatch, from_ib_option  # noqa: E402
-from flick.models import OptionContract  # noqa: E402
-from flick.risk import holdings_of, uncovered_shorts  # noqa: E402
-from flick.store import Store  # noqa: E402
+from darwin_options.broker.ibkr import IBKRBroker  # noqa: E402
+from darwin_options.data.ibkr import IBKRMarketData  # noqa: E402
+from darwin_options.data.synthetic import SyntheticMarketData  # noqa: E402
+from darwin_options.engine import Engine  # noqa: E402
+from darwin_options.ibkr import IBSession, PaperAccountMismatch, from_ib_option  # noqa: E402
+from darwin_options.models import OptionContract  # noqa: E402
+from darwin_options.risk import holdings_of, uncovered_shorts  # noqa: E402
+from darwin_options.store import Store  # noqa: E402
 
 TODAY = date(2026, 10, 21)
 
@@ -107,7 +107,7 @@ class FakeIB:
 
 
 def _opt(sym):
-    from flick.ibkr import to_ib_option
+    from darwin_options.ibkr import to_ib_option
     return to_ib_option(OptionContract.from_occ(sym))
 
 
@@ -136,7 +136,7 @@ def make_ib_engine(cfg, monkeypatch):
     data = IBKRMarketData(session, cfg.risk_free_rate)
     monkeypatch.setattr(data, "today", lambda: TODAY)
     broker = IBKRBroker(cfg, session, data)
-    monkeypatch.setattr("flick.broker.ibkr.us_market_open", lambda: True)
+    monkeypatch.setattr("darwin_options.broker.ibkr.us_market_open", lambda: True)
     return Engine(cfg, data, broker, Store(cfg.db_path)), fake, md
 
 

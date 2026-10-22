@@ -3,10 +3,10 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from flick.api.app import create_app
-from flick.models import OptionContract, Right
-from flick.payoff import PayoffLeg, example, payoff
-from flick.strategies import STRATEGIES
+from darwin_options.api.app import create_app
+from darwin_options.models import OptionContract, Right
+from darwin_options.payoff import PayoffLeg, example, payoff
+from darwin_options.strategies import STRATEGIES
 
 TODAY = date(2026, 10, 21)
 EXP = date(2026, 12, 4)
@@ -85,7 +85,7 @@ def test_max_loss_and_profit_use_wide_range():
 
 
 def test_trim_scan_keeps_every_strategy():
-    from flick.engine import trim_scan
+    from darwin_options.engine import trim_scan
 
     rows = [{"strategy": "a", "score": 1}] * 300 + [{"strategy": "b", "score": 0}] * 5
     kept = trim_scan(rows)

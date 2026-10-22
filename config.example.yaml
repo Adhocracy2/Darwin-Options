@@ -1,9 +1,9 @@
-# Copy to config.yaml and edit. Every key is optional; defaults are in src/flick/config.py.
+# Copy to config.yaml and edit. Every key is optional; defaults are in src/darwin_options/config.py.
 
 # Broker: Interactive Brokers, through IB Gateway or TWS.
 # mode: sim   = local simulated fills on real IBKR quotes
 #       paper = your IBKR paper account (recommended to start)
-#       live  = real money; also needs FLICK_ALLOW_LIVE in .env, and the gateway logged into your live account
+#       live  = real money; also needs DARWIN_ALLOW_LIVE in .env, and the gateway logged into your live account
 mode: paper
 data: ibkr                # ibkr | synthetic (offline testing, sim mode only)
 

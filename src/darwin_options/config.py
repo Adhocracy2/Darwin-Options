@@ -188,8 +188,8 @@ class Config:
     mode: str = "paper"  # sim | paper | live  (broker is always Interactive Brokers)
     data: str = "ibkr"  # ibkr | synthetic (offline testing, sim mode only)
     universe: list[str] = field(default_factory=lambda: ["SPY", "QQQ", "IWM"])
-    db_path: str = "var/flick.db"
-    log_path: str = "var/flick.log"
+    db_path: str = "var/darwin.db"
+    log_path: str = "var/darwin.log"
     sim_starting_equity: float = 25_000.0
     risk_free_rate: float = 0.04
     vol_blend: float = 0.5  # forecast vol = blend*IV + (1-blend)*realized vol
@@ -214,9 +214,9 @@ class Config:
             raise ValueError(f"unknown data source {self.data!r}")
         if self.data == "synthetic" and self.mode != "sim":
             raise ValueError("synthetic data can only be used with mode: sim")
-        if self.mode == "live" and os.environ.get("FLICK_ALLOW_LIVE") != LIVE_CONFIRMATION:
+        if self.mode == "live" and os.environ.get("DARWIN_ALLOW_LIVE") != LIVE_CONFIRMATION:
             raise RuntimeError(
-                "Live trading refused: set FLICK_ALLOW_LIVE=" + LIVE_CONFIRMATION + " to enable."
+                "Live trading refused: set DARWIN_ALLOW_LIVE=" + LIVE_CONFIRMATION + " to enable."
             )
 
 
@@ -243,7 +243,7 @@ def load_config(path: str | Path | None = None) -> Config:
         load_dotenv()
     except ImportError:
         pass
-    path = Path(path or os.environ.get("FLICK_CONFIG", "config.yaml"))
+    path = Path(path or os.environ.get("DARWIN_CONFIG", "config.yaml"))
     data = yaml.safe_load(path.read_text()) if path.exists() else {}
     cfg = _build(Config, data or {})
     cfg.validate()

@@ -60,7 +60,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>Flick</h1>
+        <h1>Darwin Options</h1>
         <div className="badges">
           {status && <>
             <span className={`badge ${status.mode === "live" ? "live" : ""}`}>{brokerLabel(status)}</span>

@@ -1,4 +1,4 @@
-"""Command line: flick check | scan | run | loop | serve | positions | report | close."""
+"""Command line: darwin check | scan | run | loop | serve | positions | report | close."""
 from __future__ import annotations
 
 import argparse
@@ -66,7 +66,7 @@ def print_review(r: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(prog="flick")
+    ap = argparse.ArgumentParser(prog="darwin")
     ap.add_argument("-c", "--config", default=None, help="config YAML (default: config.yaml)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check", help="test broker and data connectivity")
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> None:
 
     cfg = load_config(args.config)
     _setup_logging(cfg.log_path)
-    log = logging.getLogger("flick")
+    log = logging.getLogger("darwin")
 
     if args.cmd == "serve":
         import uvicorn

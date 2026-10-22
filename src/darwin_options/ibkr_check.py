@@ -1,4 +1,4 @@
-"""`flick ibkr-check`: prove the IBKR paper-trading path works, end to end, without a fill.
+"""`darwin ibkr-check`: prove the IBKR paper-trading path works, end to end, without a fill.
 
 1. Connects to IB Gateway/TWS and confirms it's a paper account.
 2. Reads the account: equity and funds (spreads need a margin account with $2,000+).

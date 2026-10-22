@@ -7,11 +7,11 @@ import pytest
 pytest.importorskip("ib_async")
 from ib_async import Option  # noqa: E402
 
-from flick.broker.ibkr import build_order, parse_fill  # noqa: E402
-from flick.config import Config  # noqa: E402
-from flick.data.ibkr import ticker_to_quote  # noqa: E402
-from flick.ibkr import from_ib_option, num, to_ib_option  # noqa: E402
-from flick.models import Leg, OptionContract, OrderIntent, Right  # noqa: E402
+from darwin_options.broker.ibkr import build_order, parse_fill  # noqa: E402
+from darwin_options.config import Config  # noqa: E402
+from darwin_options.data.ibkr import ticker_to_quote  # noqa: E402
+from darwin_options.ibkr import from_ib_option, num, to_ib_option  # noqa: E402
+from darwin_options.models import Leg, OptionContract, OrderIntent, Right  # noqa: E402
 
 EXP = date(2026, 12, 4)
 
@@ -101,7 +101,7 @@ def test_config_broker_selection(monkeypatch):
         Config(data="alpaca").validate()
     with pytest.raises(ValueError):
         Config(mode="paper", data="synthetic").validate()
-    monkeypatch.delenv("FLICK_ALLOW_LIVE", raising=False)
+    monkeypatch.delenv("DARWIN_ALLOW_LIVE", raising=False)
     with pytest.raises(RuntimeError):
         Config(mode="live").validate()
 

@@ -1,0 +1,15 @@
+[Unit]
+Description=Darwin Options dashboard (API + React UI)
+After=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@DARWIN_HOME@/current
+EnvironmentFile=@DARWIN_HOME@/shared/.env
+# Localhost only on purpose: the dashboard can place trades and has no login.
+ExecStart=@DARWIN_HOME@/current/.venv/bin/darwin serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

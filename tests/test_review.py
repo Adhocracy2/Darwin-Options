@@ -1,7 +1,7 @@
 import random
 
-from flick.models import Position, PositionLeg
-from flick.review import review
+from darwin_options.models import Position, PositionLeg
+from darwin_options.review import review
 
 
 def trade(pnl, delta=0.2, credit_pct=0.3, iv_rv=1.3, dte=40, pop=0.75, strategy="credit_spread", reason="take profit"):
