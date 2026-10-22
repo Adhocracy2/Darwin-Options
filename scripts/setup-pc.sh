@@ -10,6 +10,9 @@
 #      as a service under your user
 #   3. does a first deploy from this clone into ~/darwin (build, test, switch)
 #   4. installs the darwin-trader and darwin-web services and the narrow sudoers rule deploys need
+#   5. installs Docker and IB Gateway (auto-login container, restarts with the machine). It starts
+#      once you've put your IBKR paper login in ~/darwin/shared/ib-gateway/.env; this script
+#      never asks for or handles that password.
 #
 # The runner registration token comes from the GitHub CLI if it's logged in (`gh auth login`),
 # otherwise paste it from: repo → Settings → Actions → Runners → New self-hosted runner.
@@ -28,7 +31,7 @@ REPO="$(sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##' <<<"$remo
 # ---- 1. prerequisites ---------------------------------------------------------------
 say "Prerequisites"
 need_apt=()
-for p in git curl jq python3 python3-venv python3-pip; do dpkg -s "$p" >/dev/null 2>&1 || need_apt+=("$p"); done
+for p in git curl jq ca-certificates python3 python3-venv python3-pip; do dpkg -s "$p" >/dev/null 2>&1 || need_apt+=("$p"); done
 if [ ${#need_apt[@]} -gt 0 ]; then sudo apt-get update -qq && sudo apt-get install -y -qq "${need_apt[@]}"; fi
 if ! command -v node >/dev/null || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 18 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -79,6 +82,25 @@ else
   sudo DARWIN_HOME="$DARWIN_HOME" "$DARWIN_HOME/current/scripts/install-services.sh" "$USER"
 fi
 
+# ---- 5. IB Gateway (Docker) -------------------------------------------------------------
+say "IB Gateway"
+GW="$DARWIN_HOME/shared/ib-gateway"
+if ! command -v docker >/dev/null || ! sudo docker compose version >/dev/null 2>&1; then
+  sudo apt-get install -y -qq docker.io docker-compose-v2
+fi
+sudo systemctl enable --now docker >/dev/null
+mkdir -p "$GW"
+cp deploy/ib-gateway/docker-compose.yml "$GW/docker-compose.yml"
+if [ ! -f "$GW/.env" ]; then cp deploy/ib-gateway/.env.example "$GW/.env"; chmod 600 "$GW/.env"; fi
+if grep -qE '^TWS_USERID=.+' "$GW/.env" && grep -qE '^TWS_PASSWORD=.+' "$GW/.env"; then
+  (cd "$GW" && sudo docker compose up -d)
+  GATEWAY="running (paper API on 127.0.0.1:4002); first login may need approval in IBKR Mobile"
+else
+  GATEWAY="waiting for your IBKR PAPER login:
+                nano $GW/.env          (TWS_USERID and TWS_PASSWORD)
+                cd $GW && sudo docker compose up -d"
+fi
+
 cat <<EOF
 
 Setup complete.
@@ -86,9 +108,10 @@ Setup complete.
   Deployed:   $(cat "$DARWIN_HOME/current/REVISION" | cut -c1-12) in $DARWIN_HOME/current
   Dashboard:  http://127.0.0.1:8000
   Logs:       journalctl -u darwin-trader -f
+  IB Gateway: $GATEWAY
 
 Next:
-  - Start IB Gateway logged into your PAPER account (see deploy/ib-gateway), then:
+  - Once IB Gateway is running, check the whole trading path (no order will fill):
       cd $DARWIN_HOME/current && .venv/bin/darwin ibkr-check
   - Merge to main on GitHub: CI runs, then this PC deploys it automatically.
 EOF

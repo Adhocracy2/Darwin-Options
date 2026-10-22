@@ -13,15 +13,26 @@ merge to main ──> CI on GitHub (lint, 100+ tests, UI build)
                                     health check, roll back if it fails
 ```
 
-## Fastest: one script (or let Claude on the PC run it)
+## Fastest: from a fresh Ubuntu install
+
+In a terminal on the machine (it will ask for your sudo password):
 
 ```bash
-gh auth login                      # once, so the private repo can be cloned and the runner registered
-git clone https://github.com/Adhocracy2/Darwin-Options.git && cd Darwin-Options
-scripts/setup-pc.sh
+sudo apt update && sudo apt install -y git gh     # gh = GitHub CLI (Ubuntu 24.04+; older: see cli.github.com)
+gh auth login                                     # GitHub.com → HTTPS → log in with a browser
+gh repo clone Adhocracy2/Darwin-Options ~/Darwin-Options
+cd ~/Darwin-Options && scripts/setup-pc.sh
 ```
 
-`setup-pc.sh` does steps 1–4 below: installs prerequisites, registers the PC as a runner
+Then put your IBKR **paper** login into `~/darwin/shared/ib-gateway/.env` and start IB Gateway:
+
+```bash
+nano ~/darwin/shared/ib-gateway/.env
+cd ~/darwin/shared/ib-gateway && sudo docker compose up -d
+cd ~/darwin/current && .venv/bin/darwin ibkr-check
+```
+
+`setup-pc.sh` does steps 1–4 below, plus Docker and IB Gateway: installs prerequisites, registers the PC as a runner
 labelled `darwin-pc` and runs it as a service, does the first deploy into `~/darwin`, and installs
 the Darwin Options services. It asks for your sudo password, and for a runner token if the GitHub CLI isn't
 logged in. Re-running it skips whatever is already done.
