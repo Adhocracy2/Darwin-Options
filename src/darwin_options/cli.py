@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 
 from .config import load_config
@@ -65,6 +66,21 @@ def print_review(r: dict) -> None:
         print(f" * [{x['strategy']}] {x['title']}: {x['detail']}{change}")
 
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def web_host(cli_host: str | None, mode: str) -> str:
+    """Where the dashboard listens. It has no login and can place trades, so it may only be
+    opened beyond this machine (e.g. DARWIN_WEB_HOST=0.0.0.0 for the home network) in paper or
+    sim mode. In live mode it's refused."""
+    host = cli_host or os.environ.get("DARWIN_WEB_HOST") or "127.0.0.1"
+    if host not in LOCAL_HOSTS and mode == "live":
+        raise SystemExit(
+            f"Refusing to open the dashboard on {host} in live mode: it has no login and can place "
+            "real trades. Use 127.0.0.1 with Tailscale or an SSH tunnel (see docs/DEPLOY.md).")
+    return host
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="darwin")
     ap.add_argument("-c", "--config", default=None, help="config YAML (default: config.yaml)")
@@ -77,7 +93,8 @@ def main(argv: list[str] | None = None) -> None:
     lp = sub.add_parser("loop", help="run cycles forever")
     lp.add_argument("--interval", type=int, default=300)
     sv = sub.add_parser("serve", help="start the API + dashboard")
-    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--host", default=None,
+                    help="address to listen on (default: DARWIN_WEB_HOST, else 127.0.0.1 = this machine only)")
     sv.add_argument("--port", type=int, default=8000)
     sub.add_parser("positions", help="list open positions")
     sub.add_parser("report", help="performance summary")
@@ -101,8 +118,9 @@ def main(argv: list[str] | None = None) -> None:
 
         from .api.app import create_app
 
+        host = web_host(args.host, cfg.mode)
         cfg.ibkr.client_id += 1  # the trader service holds client_id; IBKR needs a distinct one
-        uvicorn.run(create_app(cfg), host=args.host, port=args.port)
+        uvicorn.run(create_app(cfg), host=host, port=args.port)
         return
 
     if args.cmd == "ibkr-check":

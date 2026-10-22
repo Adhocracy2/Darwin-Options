@@ -34,7 +34,9 @@ renamed. Don't reintroduce "flick" names.
 4. **Live trading needs two switches:** `mode: live` and `DARWIN_ALLOW_LIVE=yes-i-understand-real-money`.
    Paper mode refuses to connect to a live IBKR account (paper ids start with "D").
 5. Never roll a stop loss. Rolls only when paid for, positive EV, and passing the risk gate.
-6. Never push secrets. `config.yaml`, `.env`, and `deploy/ib-gateway/.env` are git-ignored.
+6. The dashboard has no login. It may listen beyond localhost (`DARWIN_WEB_HOST`) only in paper/sim
+   mode; `cli.web_host` refuses in live mode. Keep it that way unless real authentication is added.
+7. Never push secrets. `config.yaml`, `.env`, and `deploy/ib-gateway/.env` are git-ignored.
 
 ## Architecture (src/darwin_options)
 

@@ -21,3 +21,17 @@ def test_sigterm_stops_after_current_cycle(tmp_path):
     proc.wait(timeout=20)
     assert time.time() - t0 < 10  # didn't wait out the 300s sleep
     assert proc.returncode == 0 and "trader stopped cleanly" in log.read_text()
+
+
+def test_dashboard_host_rules(monkeypatch):
+    import pytest
+
+    from darwin_options.cli import web_host
+
+    monkeypatch.delenv("DARWIN_WEB_HOST", raising=False)
+    assert web_host(None, "paper") == "127.0.0.1"
+    monkeypatch.setenv("DARWIN_WEB_HOST", "0.0.0.0")
+    assert web_host(None, "paper") == "0.0.0.0"  # home network, paper money
+    assert web_host("127.0.0.1", "live") == "127.0.0.1"
+    with pytest.raises(SystemExit, match="live mode"):
+        web_host(None, "live")

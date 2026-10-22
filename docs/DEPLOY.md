@@ -104,6 +104,20 @@ journalctl -u darwin-trader -f
 Dashboard: http://127.0.0.1:8000 on the PC. From another machine:
 `ssh -L 8000:127.0.0.1:8000 you@trading-pc`, then open http://127.0.0.1:8000.
 
+## Opening the dashboard on your home network
+
+In paper mode you can reach the dashboard from your phone at `http://<AI1's IP>:8000`:
+
+```bash
+echo "DARWIN_WEB_HOST=0.0.0.0" >> ~/darwin/shared/.env
+sudo ~/darwin/current/scripts/install-services.sh     # once, picks up the updated service file
+sudo systemctl restart darwin-web
+hostname -I                                            # AI1's IP address, e.g. 192.168.1.50
+```
+
+The dashboard has no login, so anyone on your Wi-Fi can use it. That's why it refuses to start
+this way in live mode; for live, use Tailscale or an SSH tunnel.
+
 ## Day to day
 
 - **Deploy:** merge a pull request into `main`. Watch it under **Actions**.

@@ -7,7 +7,9 @@ User=@USER@
 WorkingDirectory=@DARWIN_HOME@/current
 EnvironmentFile=@DARWIN_HOME@/shared/.env
 # Localhost only on purpose: the dashboard can place trades and has no login.
-ExecStart=@DARWIN_HOME@/current/.venv/bin/darwin serve --host 127.0.0.1 --port 8000
+# Listens on 127.0.0.1 (this machine only) unless DARWIN_WEB_HOST is set in shared/.env.
+# DARWIN_WEB_HOST=0.0.0.0 opens it to your home network; refused in live mode (no login).
+ExecStart=@DARWIN_HOME@/current/.venv/bin/darwin serve --port 8000
 Restart=on-failure
 RestartSec=10
 
