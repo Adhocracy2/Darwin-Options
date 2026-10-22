@@ -29,6 +29,31 @@ class GatewayUnavailable(ConnectionError):
 
 RETRY_S = 30  # while the gateway is down, try to reconnect at most this often
 
+# IBKR notices that repeat for every quote request and mean nothing new after the first:
+# delayed data in use (10167, 10090) and data-farm connection status (2104, 2106, 2158, 2119).
+QUIET_CODES = {10167, 10090, 2104, 2106, 2158, 2119}
+
+
+class _OncePerCode(logging.Filter):
+    """Let each QUIET_CODES notice from ib_async through once, then drop repeats."""
+
+    def __init__(self):
+        super().__init__()
+        self.seen: set[int] = set()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        head = record.getMessage().split(",", 1)[0].split()  # e.g. "Error 10090, reqId 5: ..."
+        code = int(head[1]) if len(head) == 2 and head[1].isdigit() else None
+        if code not in QUIET_CODES:
+            return True
+        if code in self.seen:
+            return False
+        self.seen.add(code)
+        return True
+
+
+logging.getLogger("ib_async.wrapper").addFilter(_OncePerCode())
+
 
 class IBSession:
     def __init__(self, cfg: IBKRConfig, live: bool):
@@ -115,6 +140,24 @@ class IBSession:
                 if c is not None and getattr(c, "conId", 0):
                     self._contracts[from_ib_option(c).symbol] = c
         return {s: self._contracts[s] for s in symbols if s in self._contracts}
+
+    async def listed_options(self, symbol: str, expiry: date, trading_class: str = "",
+                             right: Right | None = None) -> dict[str, object]:
+        """Every option IBKR lists on one expiry: OCC symbol -> qualified contract (cached).
+
+        One request per expiry. Building contracts from the option-parameters strike list
+        instead fails for many strikes: that list is the union of all expiries' strikes."""
+        from ib_async import Option
+
+        query = Option(symbol, expiry.strftime("%Y%m%d"), 0.0, right.value if right else "", "SMART",
+                       multiplier="100", currency="USD", tradingClass=trading_class)
+        out = {}
+        for d in await self.ib.reqContractDetailsAsync(query):
+            c = d.contract
+            if c is not None and getattr(c, "conId", 0):
+                s = from_ib_option(c).symbol
+                out[s] = self._contracts.setdefault(s, c)
+        return out
 
 
 # ---- conversions (pure, unit-tested) --------------------------------------------

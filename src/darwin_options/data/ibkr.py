@@ -89,18 +89,17 @@ class IBKRMarketData:
             chain = next((p for p in smart if p.tradingClass == symbol), smart[0])
             expiries = sorted(e for e in (parse_expiry(x) for x in chain.expirations)
                               if dte_min <= (e - today).days <= dte_max)[: self.s.cfg.max_expiries]
-            rights = [right] if right else [Right.PUT, Right.CALL]
-            wanted: list[OptionContract] = []
+            ib_contracts: dict[str, object] = {}
             for exp in expiries:
                 t = max((exp - today).days, 1) / 365
-                for k in chain.strikes:
-                    if abs(k - spot) / spot > strike_pct:
+                listed = await self.s.listed_options(symbol, exp, chain.tradingClass, right)
+                for occ, c in listed.items():
+                    oc = OptionContract.from_occ(occ)
+                    if abs(oc.strike - spot) / spot > strike_pct:
                         continue
-                    for rt in rights:
-                        d = abs(pricing.greeks(spot, k, t, self.r, sigma, rt)["delta"])
-                        if 0.03 <= d <= 0.97:
-                            wanted.append(OptionContract(OptionContract.occ(symbol, exp, rt, k), symbol, exp, k, rt))
-            ib_contracts = await self.s.qualify_options([c.symbol for c in wanted])
+                    d = abs(pricing.greeks(spot, oc.strike, t, self.r, sigma, oc.right)["delta"])
+                    if 0.03 <= d <= 0.97:
+                        ib_contracts[occ] = c
             syms = list(ib_contracts)
             tickers = await self._tickers([ib_contracts[s] for s in syms])
             return [q for s, t in zip(syms, tickers)

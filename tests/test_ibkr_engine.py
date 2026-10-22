@@ -49,6 +49,20 @@ class FakeIB:
         strikes = sorted({q.contract.strike for q in ch.quotes})
         return [SimpleNamespace(exchange="SMART", tradingClass=symbol, expirations=exps, strikes=strikes)]
 
+    async def reqContractDetailsAsync(self, query):
+        """Only the strikes the synthetic market lists on that expiry, like real IBKR."""
+        exp = query.lastTradeDateOrContractMonth
+        out = []
+        for q in self.md.chain(query.symbol, 0, 800).quotes:
+            if q.contract.expiry.strftime("%Y%m%d") != exp or (query.right and q.contract.right.value != query.right):
+                continue
+            c = _opt(q.contract.symbol)
+            self._con += 1
+            c.conId = self._con
+            self._by_con[c.conId] = q.contract.symbol
+            out.append(SimpleNamespace(contract=c))
+        return out
+
     async def reqTickersAsync(self, *cs):
         out = []
         for c in cs:
