@@ -93,6 +93,7 @@ def test_no_new_orders_once_stop_requested(engine):
 def test_no_new_trades_in_first_30_minutes(engine, md):
     from datetime import datetime
     from darwin_options import clock
+    engine.cfg.risk.no_entries_after_open_min = 30
     day = md.today()
     md.clock_now = lambda: datetime(day.year, day.month, day.day, 9, 45, tzinfo=clock.NY)
     out = engine.run_once()
