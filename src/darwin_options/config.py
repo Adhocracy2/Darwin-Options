@@ -120,6 +120,9 @@ class RiskConfig:
     min_score: float = 0.0  # minimum expected value per $ risked
     # 3-5-7 rule, "7": the planned take-profit must earn at least this share of the trade's max loss
     min_target_return_on_risk: float = 0.07
+    # No new trades this many minutes after the 9:30 New York open (prices swing and spreads are wide);
+    # exits still run. Same-day strategies also wait for same_day.entry_start.
+    no_entries_after_open_min: int = 30
 
     # Limits by account size. Defaults follow the usual rules for a ~$10k account: risk 1-5% of
     # it per trade, spread over 5-10 smaller positions, about 30% of it at risk in total.

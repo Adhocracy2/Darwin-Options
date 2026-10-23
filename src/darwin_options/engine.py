@@ -360,6 +360,8 @@ class Engine:
                 decision.approved, decision.reasons = False, [f"cycle limit: {unfilled} unfilled orders this cycle"]
             elif decision.approved and self.stop_requested:
                 decision.approved, decision.reasons = False, ["stopping: no new orders"]
+            elif decision.approved and (wait := self.opening_wait()):
+                decision.approved, decision.reasons = False, [wait]
             rows.append(candidate_row(c, decision))
             if decision.approved and self.cfg.allow_new_entries:
                 try:
@@ -379,6 +381,19 @@ class Engine:
                     sd_today = sameday.today_stats(self.store.positions(None), self.md.today())
         self.store.save_scan(trim_scan(rows))
         return opened
+
+    def opening_wait(self) -> str | None:
+        """Why new trades must wait (the first minutes after the open), or None."""
+        mins = self.cfg.risk.no_entries_after_open_min
+        if not mins:
+            return None
+        from datetime import datetime, time, timedelta
+        from . import clock
+        now = self.now() or clock.now_ny()
+        start = (datetime.combine(now.date(), time(9, 30)) + timedelta(minutes=mins)).time()
+        if time(9, 30) <= now.time() < start:
+            return f"no new trades in the first {mins} minutes after the open (until {start:%H:%M} New York)"
+        return None
 
     def collect(self) -> None:
         """Record option prices the strategies didn't ask for, for backtests (record.* in config):

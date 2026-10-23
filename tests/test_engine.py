@@ -88,3 +88,16 @@ def test_no_new_orders_once_stop_requested(engine):
     engine.stop_requested = True
     engine.open_new()
     assert submits == []
+
+
+def test_no_new_trades_in_first_30_minutes(engine, md):
+    from datetime import datetime
+    from darwin_options import clock
+    day = md.today()
+    md.clock_now = lambda: datetime(day.year, day.month, day.day, 9, 45, tzinfo=clock.NY)
+    out = engine.run_once()
+    assert not out["opened"]
+    rows = engine.store.latest_scan()["candidates"]
+    assert any("first 30 minutes" in r for c in rows for r in c["reasons"])
+    md.clock_now = lambda: datetime(day.year, day.month, day.day, 10, 5, tzinfo=clock.NY)
+    assert engine.run_once()["opened"]

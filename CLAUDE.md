@@ -22,7 +22,8 @@ renamed. Don't reintroduce "flick" names.
 - IBKR account has Level 4 options. Since 2026-10-23 the paper account itself is **US$10,000 in USD** (reset by the
   owner) and `risk.capital: 10000`, pilot off. Risk follows the owner's **3-5-7 rule**: at most 3% of the account per
   trade, 5% at risk across all open trades, and (credit trades) the planned take-profit must be at least 7% of the
-  trade's risk (`risk.min_target_return_on_risk`). The 2-per-ticker limit was removed. Live option quotes (OPRA)
+  trade's risk (`risk.min_target_return_on_risk`). The 2-per-ticker limit was removed. No new trades in the first 30 minutes after the open
+  (`risk.no_entries_after_open_min`); exits still run. Live option quotes (OPRA)
   since 2026-10-23 via `market_data_type: 3` (live where subscribed); the SPY stock price is still delayed (no US
   equity subscription), so same-day trading stays blocked (`ibkr.live_stock`). SPX/SPXW is recorded, not traded
   (`record.extra_symbols`); IBKR gives no SPX history without an index subscription.

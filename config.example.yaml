@@ -117,6 +117,7 @@ risk:
   max_loss_per_trade: 2500       # dollars; hard cap on any one trade
   max_positions_per_underlying: 2  # spread positions across tickers
   min_score: 0.0
+  no_entries_after_open_min: 30  # no new trades until 10:00 New York; exits still run
   # Usual rules for a ~$10k account: risk 1-5% per trade, 5-10 smaller positions,
   # about 30% of the account at risk in total. Add more stages to change limits by size.
   stages:
