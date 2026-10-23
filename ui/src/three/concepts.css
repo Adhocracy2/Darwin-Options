@@ -127,11 +127,3 @@
 .cc-card.mini .c-big span { display: none; }
 .cc-card.mini .c-alert { margin-top: 4px; padding: 2px 6px; font-size: 10px; }
 
-/* account summary on the engine's circle */
-.cc-hud { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 14px; padding: 7px 12px; border-radius: 10px;
-  background: rgba(8, 20, 40, 0.55); border: 1px solid rgba(90, 216, 255, 0.45); box-shadow: 0 0 18px rgba(90, 216, 255, 0.18);
-  color: #e7ecf5; pointer-events: none; backdrop-filter: blur(3px); }
-.cc-hud div { display: flex; flex-direction: column; align-items: center; min-width: 58px; }
-.cc-hud span { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #8fb8d8; }
-.cc-hud b { font-size: 14px; font-weight: 700; }
-.cc-hud b.pos { color: #69db7c; } .cc-hud b.neg { color: #ff8787; }

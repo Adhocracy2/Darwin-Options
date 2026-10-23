@@ -4,7 +4,6 @@
  * IBKR's servers). Every link shows two-way traffic: yellow dots out, cyan dots back.
  */
 import * as THREE from "three";
-import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { Stage } from "../stage";
 import {
   cardHtml, disposeGroup, makeBrain, makeCard, makeFlow, makeTeamBlock, roundedSlab,
@@ -35,6 +34,7 @@ const ROUTER = new THREE.Vector3(18.2, 0, 4.4);
 const ISP = new THREE.Vector3(21.4, 0, 1.4);
 const LINE: Record<LineState, string> = { ok: "#51cf66", down: "#ff6b6b", unknown: "#5c677d" };
 const SUPERVISOR = ringPos(ANGLE.supervisor);
+const PLAZA_R = 4.2; // radius of the engine's circle
 
 function gatewayBuilding() {
   const g = new THREE.Group();
@@ -206,7 +206,7 @@ function build(stage: Stage, world: World) {
     block.group.rotation.y = Math.PI / 4;
     root.add(block.group);
     blocks.set(team.id, block);
-    road(c.clone().multiplyScalar(2.6 / c.length()), c.clone().multiplyScalar(1 - 2.2 / c.length()));
+    road(c.clone().multiplyScalar(PLAZA_R / c.length()), c.clone().multiplyScalar(1 - 2.2 / c.length()));
 
     const f = makeFlow(c.clone().setY(1.4), new THREE.Vector3(0, 1.6, -0.3), { color: team.color, height: 3.2 });
     root.add(f.group);
@@ -225,7 +225,7 @@ function build(stage: Stage, world: World) {
   // ---- the engine
   const engine = new THREE.Group();
   engine.userData.teamId = "engine";
-  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.2, 48),
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(PLAZA_R, PLAZA_R + 0.2, 0.2, 64),
     new THREE.MeshStandardMaterial({ color: "#5ad8ff", roughness: 0.3, transparent: true, opacity: 0.08, depthWrite: false }));
   plaza.position.y = -0.2;
   // the ring under the brain: a see-through core line inside two soft halos, all additive so it glows
@@ -234,28 +234,52 @@ function build(stage: Stage, world: World) {
   });
   const ringCoreMat = glowMat(0.55), ringHaloMat = glowMat(0.16), ringOuterMat = glowMat(0.06);
   const ring = new THREE.Group();
-  ring.add(new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.03, 8, 128), ringCoreMat));
-  ring.add(new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.11, 10, 128), ringHaloMat));
-  ring.add(new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.26, 12, 128), ringOuterMat));
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(PLAZA_R + 0.05, 0.03, 8, 160), ringCoreMat));
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(PLAZA_R + 0.05, 0.11, 10, 160), ringHaloMat));
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(PLAZA_R + 0.05, 0.26, 12, 160), ringOuterMat));
   ring.rotation.x = Math.PI / 2;
   ring.position.y = -0.09;
   const brain = makeBrain("#7ee3ff");
   brain.group.position.set(0, 1.7, -0.3);
   engine.add(plaza, ring, brain.group);
-  const hudEl = document.createElement("div");
-  hudEl.className = "cc-hud";
-  const hud = new CSS2DObject(hudEl);
-  hud.position.set(0, 0, 1.9); // on the circle, in front of the brain
+  // account summary painted flat on the face of the circle, in front of the brain
+  const hudCanvas = document.createElement("canvas");
+  hudCanvas.width = 1024; hudCanvas.height = 640; // drawn tall: the camera sees the circle at a slant
+  const hudTex = new THREE.CanvasTexture(hudCanvas);
+  hudTex.colorSpace = THREE.SRGBColorSpace;
+  hudTex.anisotropy = 8;
+  const hud = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 3.5),
+    new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthWrite: false, toneMapped: false }));
+  hud.rotation.x = -Math.PI / 2; // lying on the circle
+  hud.position.set(0, -0.085, 1.45);
   engine.add(hud);
   const money = (v: number) => `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   const pct = (v: number | null, signed = false) => v == null ? "–" : `${signed && v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`;
-  const tone = (v: number | null) => (v == null || Math.abs(v) < 1e-9 ? "" : v > 0 ? "pos" : "neg");
+  const colour = (v: number | null) => (v == null || Math.abs(v) < 1e-9 ? "#e7ecf5" : v > 0 ? "#69db7c" : "#ff8787");
   const renderHud = (w: World) => {
     const m = w.summary;
-    const cell = (label: string, value: string, cls = "") => `<div><span>${label}</span><b class="${cls}">${value}</b></div>`;
-    hudEl.innerHTML = cell("Realised", money(m.realized), tone(m.realized)) + cell("Unrealised", money(m.unrealized), tone(m.unrealized))
-      + cell("Open", String(m.open)) + cell("%RPT", pct(m.riskPerTrade)) + cell("%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "neg" : "")
-      + cell("%Today", pct(m.today, true), tone(m.today));
+    const cells: [string, string, string][] = [
+      ["REALISED", money(m.realized), colour(m.realized)], ["UNREALISED", money(m.unrealized), colour(m.unrealized)],
+      ["OPEN", String(m.open), "#e7ecf5"], ["%RPT", pct(m.riskPerTrade), "#e7ecf5"],
+      ["%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "#ff8787" : "#e7ecf5"], ["%TODAY", pct(m.today, true), colour(m.today)],
+    ];
+    const g = hudCanvas.getContext("2d")!;
+    g.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    g.textAlign = "center";
+    cells.forEach(([label, value, col], i) => {
+      const x = 180 + (i % 3) * 332, y = i < 3 ? 250 : 545;
+      g.shadowColor = "rgba(90, 216, 255, 0.8)";
+      g.shadowBlur = 18;
+      g.fillStyle = "#8fd3ff";
+      g.font = "700 50px system-ui, sans-serif";
+      g.fillText(label, x, y - 112);
+      g.shadowColor = col;
+      g.shadowBlur = 24;
+      g.fillStyle = col;
+      g.font = "700 106px system-ui, sans-serif";
+      g.fillText(value, x, y + 12);
+    });
+    hudTex.needsUpdate = true;
   };
   root.add(engine);
   centers.set("engine", new THREE.Vector3(0, 0.5, 0));
@@ -277,7 +301,7 @@ function build(stage: Stage, world: World) {
   root.add(supBlock.group);
   blocks.set("supervisor", supBlock);
   centers.set("supervisor", SUPERVISOR.clone().setY(0.6));
-  road(SUPERVISOR.clone().multiplyScalar(2.6 / SUPERVISOR.length()), SUPERVISOR.clone().multiplyScalar(1 - 1.6 / SUPERVISOR.length()));
+  road(SUPERVISOR.clone().multiplyScalar(PLAZA_R / SUPERVISOR.length()), SUPERVISOR.clone().multiplyScalar(1 - 1.6 / SUPERVISOR.length()));
   const supFlow = makeFlow(SUPERVISOR.clone().setY(1.4), new THREE.Vector3(0, 1.6, -0.3), { color: "#ffd43b", height: 3.2 });
   root.add(supFlow.group);
   let supBusy = false;
