@@ -70,6 +70,7 @@ def test_payoff_api(engine):
     pid = client.get("/api/positions").json()[0]["id"]
     pp = client.get(f"/api/positions/{pid}/payoff").json()
     assert pp["prices"] and pp["exit_dte"] >= 1
+    assert pp["summary"]["open_value"] != 0 and pp["summary"]["rules"]
     assert client.get("/api/positions/nope/payoff").status_code == 404
 
 
@@ -90,3 +91,50 @@ def test_trim_scan_keeps_every_strategy():
     rows = [{"strategy": "a", "score": 1}] * 300 + [{"strategy": "b", "score": 0}] * 5
     kept = trim_scan(rows)
     assert sum(r["strategy"] == "b" for r in kept) == 5 and len(kept) == 155
+
+
+def test_position_summary_for_credit_spread():
+    from darwin_options.config import ManagementConfig
+    from darwin_options.models import Position, PositionLeg
+    from darwin_options.payoff import position_summary
+    pos = Position(strategy="credit_spread", underlying="SPY", legs=[
+        PositionLeg("SPY261127C00787000", -1, 5.25), PositionLeg("SPY261127C00792000", 1, 3.82)],
+        max_loss=358.75, max_profit=141.25, commissions=2.11)
+    marks = {"SPY261127C00787000": 4.735, "SPY261127C00792000": 3.385}
+    s = position_summary(pos, marks, 764.1, date(2026, 10, 23), ManagementConfig(), "credit_spread")
+    assert s["open_value"] == pytest.approx(143)
+    assert s["close_value"] == pytest.approx(-135)  # costs $135 to buy back
+    assert s["pnl_now"] == pytest.approx(8)
+    assert s["days_left"] == 35 and s["nearest_short"]["strike"] == 787
+    r = s["rules"]
+    assert r["take_profit"]["close_cost"] == pytest.approx(71.5) and r["take_profit"]["pnl"] == pytest.approx(71.5)
+    assert r["stop_loss"]["close_cost"] == pytest.approx(429) and r["stop_loss"]["pnl"] == pytest.approx(-286)
+    assert r["time_exit"] == {"date": "2026-11-06", "dte": 21}
+    assert r["threatened"]["strike"] == 787
+    # without quotes there's nothing to say about closing now, but the rules still show
+    s2 = position_summary(pos, {}, 764.1, date(2026, 10, 23), ManagementConfig(), "credit_spread")
+    assert s2["close_value"] is None and s2["pnl_now"] is None and "take_profit" in s2["rules"]
+
+
+def test_outlook_follows_exit_rules():
+    import time
+    from darwin_options.analysis import outlook
+    from darwin_options.config import ManagementConfig
+    from darwin_options.models import OptionContract
+    short, long_ = OptionContract.from_occ("SPY261127C00787000"), OptionContract.from_occ("SPY261127C00792000")
+    ivs = {short.symbol: 0.12, long_.symbol: 0.12}
+    t0 = time.time()
+    o = outlook([(short, -1), (long_, 1)], 143.0, 764.1, date(2026, 10, 23), 0.11, 0.04, ivs, ManagementConfig(), 1.3)
+    assert time.time() - t0 < 3
+    assert o["exit_date"] == "2026-11-06" and o["days"] == 14
+    assert sum(o["chances"].values()) == pytest.approx(1)
+    assert 0 < o["chance_profit"] < 1 and -359 <= o["expected_pnl"] <= 143
+    assert o == outlook([(short, -1), (long_, 1)], 143.0, 764.1, date(2026, 10, 23), 0.11, 0.04, ivs,
+                        ManagementConfig(), 1.3)  # same inputs, same answer
+    # far above the short strike: mostly closed as threatened
+    hi = outlook([(short, -1), (long_, 1)], 143.0, 786.0, date(2026, 10, 23), 0.11, 0.04, ivs, ManagementConfig(), 1.3)
+    assert hi["chances"]["threatened"] > 0.5
+    # same-day trades aren't simulated
+    assert outlook([(short, -1), (long_, 1)], 143.0, 764.1, date(2026, 11, 27), 0.11, 0.04, ivs,
+                   ManagementConfig(close_by_time="15:30")) is None
+    print(o)

@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { Candidate, Event, Performance, Position, Snapshot, Stats, Status } from "../api";
 import { api, pct, signed, usd } from "../api";
 import { EquityChart } from "./EquityChart";
@@ -11,11 +11,28 @@ const PayoffToggle = ({ open, onClick }: { open: boolean; onClick: () => void })
   <button type="button" className="icon" aria-expanded={open} onClick={onClick}>{open ? "Hide" : "Payoff"}</button>;
 
 /** Full-width row under a table row; the chart stays inside the visible width when the table scrolls. */
-const ExpandRow = ({ cols, children }: { cols: number; children: React.ReactNode }) => (
-  <tr className="expand"><td colSpan={cols}>
-    <div style={{ position: "sticky", left: 0, maxWidth: "calc(100vw - 64px)" }}>{children}</div>
-  </td></tr>
-);
+function ExpandRow({ cols, children }: { cols: number; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const wrap = ref.current?.closest(".table-wrap");
+    const td = ref.current?.parentElement;
+    if (!wrap || !td) return;
+    const fit = () => {
+      const cs = getComputedStyle(td);
+      setWidth(wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <tr className="expand"><td colSpan={cols}>
+      <div ref={ref} style={{ position: "sticky", left: 0, width: width ?? undefined, maxWidth: width ?? "calc(100vw - 64px)" }}>{children}</div>
+    </td></tr>
+  );
+}
 
 const Pnl = ({ v }: { v: number | null | undefined }) =>
   <span className={v == null ? "muted" : v >= 0 ? "pos" : "neg"}>{signed(v)}</span>;
@@ -78,7 +95,7 @@ export function Positions({ open, closed, onChange }: { open: Position[]; closed
               </tr>
               {shown === p.id && (
                 <ExpandRow cols={6}>
-                  <PayoffPanel load={() => api.positionPayoff(p.id)} />
+                  <PayoffPanel load={() => api.positionPayoff(p.id)} refreshMs={60_000} />
                   <p className="muted small payoff-source">Whole position, including anything already realised. Commissions to close not included.</p>
                 </ExpandRow>
               )}

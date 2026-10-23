@@ -156,6 +156,32 @@ export type Payoff = {
   entry_credit: number;
   underlying?: string;
   example?: boolean;
+  summary?: PositionSummary; // open positions only
+};
+export type SummaryLeg = { symbol: string; qty: number; strike: number; right: "C" | "P"; expiry: string; entry_price: number; mark: number | null };
+export type Outlook = {
+  paths: number; days: number; exit_date: string; sigma: number; expected_pnl: number; chance_profit: number;
+  chances: { take_profit: number; stop_loss: number; threatened: number; time_exit: number };
+};
+export type PositionSummary = {
+  legs: SummaryLeg[];
+  spot: number;
+  open_value: number; // + received, - paid
+  close_value: number | null; // + received, - paid, to close now
+  pnl_now: number | null;
+  commissions: number;
+  days_left: number;
+  expiry: string;
+  nearest_short: { strike: number; right: "C" | "P"; distance_pct: number } | null;
+  max_profit: number;
+  max_loss: number;
+  rules: {
+    take_profit?: { pct: number; pnl: number; close_cost?: number; close_value?: number };
+    stop_loss?: { pnl: number; mult?: number; pct?: number; close_cost?: number; close_value?: number };
+    time_exit?: { date: string; dte?: number; time?: string };
+    threatened?: { strike: number; buffer_pct: number };
+  };
+  outlook?: Outlook | null;
 };
 export type StrategyPayoff = { name: string; label: string; description: string; source: string; payoff: Payoff };
 export type PayoffRequest = { strategy: string; net_credit: number; qty: number; legs: { symbol: string; ratio: number }[] };

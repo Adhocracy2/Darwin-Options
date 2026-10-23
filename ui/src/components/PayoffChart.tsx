@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Payoff } from "../api";
 import { signed, usd } from "../api";
+import { TradeSummary } from "./TradeSummary";
 
 const PAD = { l: 60, r: 14, t: 22, b: 30 };
 
@@ -137,17 +138,33 @@ export function PayoffChart({ p, height = 240 }: { p: Payoff; height?: number })
   );
 }
 
-/** Loads a payoff and renders it, with loading and error states. */
-export function PayoffPanel({ load, height }: { load: () => Promise<Payoff>; height?: number }) {
+/** Loads a payoff and renders it, with loading and error states. With `refreshMs` it reloads on
+ *  that interval and keeps showing the last result meanwhile. Open positions also get a summary. */
+export function PayoffPanel({ load, height, refreshMs }: { load: () => Promise<Payoff>; height?: number; refreshMs?: number }) {
   const [p, setP] = useState<Payoff | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [at, setAt] = useState<Date | null>(null);
   useEffect(() => {
     let alive = true;
-    load().then((v) => alive && setP(v)).catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)));
-    return () => { alive = false; };
+    const get = () => load()
+      .then((v) => { if (alive) { setP(v); setErr(null); setAt(new Date()); } })
+      .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)));
+    get();
+    const t = refreshMs ? setInterval(get, refreshMs) : undefined;
+    return () => { alive = false; if (t) clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  if (err) return <p className="neg small">Couldn't load payoff: {err}</p>;
+  if (err && !p) return <p className="neg small">Couldn't load payoff: {err}</p>;
   if (!p) return <p className="muted small">Loading payoff…</p>;
-  return <PayoffChart p={p} height={height} />;
+  return (
+    <>
+      <PayoffChart p={p} height={height} />
+      {p.summary && <TradeSummary s={p.summary} underlying={p.underlying ?? ""} />}
+      {refreshMs && at && (
+        <p className="muted small payoff-source">
+          Updated {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{err ? ` · last refresh failed: ${err}` : ""}
+        </p>
+      )}
+    </>
+  );
 }

@@ -74,7 +74,9 @@ renamed. Don't reintroduce "flick" names.
   journal under `var/replays/`. `darwin data` shows totals. Replays: daily limits use the real clock,
   so pilot is off in replays.
 - `review.py`: trade review; suggests changes only with 20+ trades per group and ~2 standard errors.
-- `payoff.py`: payoff diagrams. `ibkr_check.py`: `darwin ibkr-check` places an unfillable combo
+- `payoff.py`: payoff diagrams; `position_summary` (opened for, cost to close now, exit levels) shown under an
+  open position's Payoff in the dashboard, with `analysis.outlook`: a path simulation to the planned exit using
+  the manager's rules (chance of profit, average result, odds of each exit), refreshed every minute. `ibkr_check.py`: `darwin ibkr-check` places an unfillable combo
   and cancels it to prove the order path.
 - `api/app.py`: FastAPI for the UI. `cli.py`: `darwin check|scan|run|loop|serve|positions|report|review|ibkr-check|close|data|replay`.
 

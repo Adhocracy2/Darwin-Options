@@ -125,3 +125,59 @@ def example(strategy: str, today: date, exit_dte: int, r: float = 0.04, iv: floa
     out = payoff(legs, credit, 100.0, today, r, exit_dte)
     out["example"] = True
     return out
+
+
+def position_summary(pos, marks: dict[str, float], spot: float, today: date, m, kind: str) -> dict:
+    """Plain numbers behind an open position: what it was opened for, what closing costs now,
+    and where the exit rules (`m`, its ManagementConfig) will close it.
+
+    Dollar amounts are for the whole position. `open_value` / `close_value` are positive when
+    money came in (opening a credit trade, or selling to close a debit trade)."""
+    legs = []
+    for l in pos.open_legs:
+        c = OptionContract.from_occ(l.symbol)
+        legs.append({"symbol": l.symbol, "qty": l.qty, "strike": c.strike, "right": c.right.value,
+                     "expiry": c.expiry.isoformat(), "entry_price": l.entry_price, "mark": marks.get(l.symbol)})
+    open_value = -sum(l.qty * l.entry_price for l in pos.open_legs) * MULTIPLIER
+    have_marks = all(x["mark"] is not None for x in legs)
+    close_value = sum(x["qty"] * x["mark"] for x in legs) * MULTIPLIER if have_marks else None
+    first_expiry = min(OptionContract.from_occ(l.symbol).expiry for l in pos.open_legs)
+    shorts = [x for x in legs if x["qty"] < 0 and x["expiry"] == first_expiry.isoformat()]
+    nearest = min(shorts, key=lambda x: abs(x["strike"] - spot)) if shorts else None
+
+    rules: dict = {}
+    if kind != "leaps_call":
+        if open_value > 0:  # credit: close by buying back for less
+            rules["take_profit"] = {"pct": m.take_profit_pct, "close_cost": open_value * (1 - m.take_profit_pct),
+                                    "pnl": open_value * m.take_profit_pct}
+            rules["stop_loss"] = {"mult": m.stop_loss_mult, "close_cost": open_value * (1 + m.stop_loss_mult),
+                                  "pnl": -open_value * m.stop_loss_mult}
+        elif open_value < 0:  # debit: close by selling for more
+            debit = -open_value
+            rules["take_profit"] = {"pct": m.take_profit_pct, "close_value": debit * (1 + m.take_profit_pct),
+                                    "pnl": debit * m.take_profit_pct}
+            rules["stop_loss"] = {"pct": m.debit_stop_loss_pct, "close_value": debit * (1 - m.debit_stop_loss_pct),
+                                  "pnl": -debit * m.debit_stop_loss_pct}
+        if m.close_by_time:
+            rules["time_exit"] = {"date": first_expiry.isoformat(), "time": m.close_by_time}
+        else:
+            rules["time_exit"] = {"date": (first_expiry - timedelta(days=m.close_at_dte)).isoformat(),
+                                  "dte": m.close_at_dte}
+        if m.check_threatened and nearest:
+            rules["threatened"] = {"strike": nearest["strike"], "buffer_pct": m.itm_buffer_pct}
+
+    return {
+        "legs": legs,
+        "spot": spot,
+        "open_value": round(open_value, 2),
+        "close_value": None if close_value is None else round(close_value, 2),
+        "pnl_now": None if close_value is None else round(open_value + close_value, 2),
+        "commissions": round(pos.commissions, 2),
+        "days_left": (first_expiry - today).days,
+        "expiry": first_expiry.isoformat(),
+        "nearest_short": nearest and {"strike": nearest["strike"], "right": nearest["right"],
+                                      "distance_pct": (nearest["strike"] - spot) / spot},
+        "max_profit": pos.max_profit,
+        "max_loss": pos.max_loss,
+        "rules": rules,
+    }

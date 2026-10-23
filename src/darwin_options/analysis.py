@@ -11,7 +11,7 @@ import math
 from datetime import date, timedelta
 
 from .config import FilterConfig
-from .models import MULTIPLIER, Leg, OptionQuote, Right
+from .models import MULTIPLIER, Leg, OptionContract, OptionQuote, Right
 from . import pricing
 
 _Z = [(-6 + 12 * i / 400) for i in range(401)]  # integration grid for N(0,1)
@@ -95,3 +95,63 @@ def _expected(legs: list[Leg], net_credit: float, spot: float, sigma: float, r: 
 
 def otm_pct(spot: float, strike: float, right: Right) -> float:
     return (spot - strike) / spot if right is Right.PUT else (strike - spot) / spot
+
+
+def outlook(legs: list[tuple[OptionContract, int]], open_value: float, spot: float, today: date,
+            sigma: float, r: float, leg_ivs: dict[str, float], m, close_fees: float = 0.0,
+            paths: int = 1000, seed: int = 7) -> dict | None:
+    """Projected outcome of an open position from today's prices, following the exit rules.
+
+    Simulates `paths` daily price paths for the underlying (forecast vol `sigma`) up to the planned
+    time exit, revalues the legs each day at their current IVs, and closes on the first rule that
+    fires, in the manager's order: short strike threatened, take profit, stop loss, time exit.
+    Dollars are for the whole position (`legs` hold signed contract counts; `open_value` is the
+    money received, negative if paid) and include `close_fees`.
+
+    Simplifications: checks once a day (the trader checks every few minutes, so real exits can come
+    earlier), IVs don't change, no early assignment. Same-day trades aren't handled (returns None).
+    """
+    import random
+
+    first = min(c.expiry for c, _ in legs)
+    if m.close_by_time or first <= today:
+        return None
+    exit_day = max(first - timedelta(days=m.close_at_dte), today + timedelta(days=1))
+    days = (exit_day - today).days
+    dt = 1 / 365
+    shorts = [c for c, q in legs if q < 0 and c.expiry == first]
+    credit = open_value > 0
+    tp = m.take_profit_pct * abs(open_value)
+    sl = (m.stop_loss_mult if credit else m.debit_stop_loss_pct) * abs(open_value)
+
+    rng = random.Random(seed)  # same draws each time, so refreshes only move with the market
+    counts = {"take_profit": 0, "stop_loss": 0, "threatened": 0, "time_exit": 0}
+    total = wins = 0.0
+    drift, step = -0.5 * sigma * sigma * dt, sigma * math.sqrt(dt)
+    for _ in range(paths):
+        s = spot
+        for d in range(1, days + 1):
+            s *= math.exp(drift + step * rng.gauss(0.0, 1.0))
+            on = today + timedelta(days=d)
+            value = sum(q * pricing.american_floor_price(
+                s, c.strike, max((c.expiry - on).days, 0) / 365, r, leg_ivs.get(c.symbol, sigma), c.right)
+                for c, q in legs) * MULTIPLIER
+            pnl = open_value + value  # the manager's rules look at P&L before closing fees
+            if m.check_threatened and any(otm_pct(s, c.strike, c.right) < m.itm_buffer_pct for c in shorts):
+                why = "threatened"
+            elif pnl >= tp:
+                why = "take_profit"
+            elif -pnl >= sl:
+                why = "stop_loss"
+            elif d == days:
+                why = "time_exit"
+            else:
+                continue
+            counts[why] += 1
+            pnl -= close_fees
+            total += pnl
+            wins += pnl > 0
+            break
+    return {"paths": paths, "days": days, "exit_date": exit_day.isoformat(), "sigma": sigma,
+            "expected_pnl": total / paths, "chance_profit": wins / paths,
+            "chances": {k: v / paths for k, v in counts.items()}}

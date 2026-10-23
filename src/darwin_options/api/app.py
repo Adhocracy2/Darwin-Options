@@ -14,11 +14,12 @@ from ..engine import Engine
 from ..factory import build_engine
 from ..ibkr import GatewayUnavailable
 from ..manager import ExitAction
+from .. import analysis, pricing
 from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
 from ..report import performance
 from ..review import review as review_trades
-from ..strategies import instances as strategy_instances
+from ..strategies import instances as strategy_instances, type_of
 from ..settings import SETTINGS_KEY, SettingsError, describe as describe_settings
 
 log = logging.getLogger(__name__)
@@ -116,6 +117,22 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
             raise HTTPException(400, "no legs")
         return _payoff(legs, credit, body.get("strategy", ""))
 
+    def _outlook(p, quotes, spot, mgmt):
+        """Projected outcome from today's prices (see analysis.outlook); None if it doesn't apply."""
+        if type_of(engine.cfg, p.strategy) == "leaps_call":
+            return None
+        contracts = [OptionContract.from_occ(l.symbol) for l in p.open_legs]
+        today = engine.md.today()
+        ivs = payoff_mod.leg_ivs(contracts, quotes, spot, today, cfg.risk_free_rate)
+        first = min(c.expiry for c in contracts)
+        front = [ivs[c.symbol] for c in contracts if c.expiry == first]
+        rv = pricing.realized_vol(engine.md.closes(p.underlying))
+        sigma = analysis.forecast_vol(sum(front) / len(front), rv, engine.cfg.vol_blend)
+        fees = engine.cfg.execution.commission_per_contract * sum(abs(l.qty) for l in p.open_legs)
+        open_value = -sum(l.qty * l.entry_price for l in p.open_legs) * MULTIPLIER
+        return analysis.outlook([(c, l.qty) for c, l in zip(contracts, p.open_legs)], open_value, spot,
+                                today, sigma, cfg.risk_free_rate, ivs, mgmt, fees)
+
     @app.get("/api/positions/{pid}/payoff")
     def position_payoff(pid: str):
         p = engine.store.get_position(pid)
@@ -124,7 +141,20 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         legs = [(l.symbol, l.qty) for l in p.open_legs]
         # P&L relative to what was paid for the open legs, plus anything already realised.
         credit = -sum(l.qty * l.entry_price for l in p.open_legs) * MULTIPLIER + p.realized_pnl()
-        return _payoff(legs, credit, p.strategy)
+        out = _payoff(legs, credit, p.strategy)
+        try:
+            quotes = engine.md.quotes([s for s, _ in legs])
+            known = {i.id for i in strategy_instances(engine.cfg)}
+            mgmt = engine.cfg.management.for_strategy(p.strategy if p.strategy in known else "")
+            out["summary"] = payoff_mod.position_summary(
+                p, {s: q.mid for s, q in quotes.items()}, out["spot"], engine.md.today(), mgmt,
+                type_of(engine.cfg, p.strategy))
+            out["summary"]["outlook"] = _outlook(p, quotes, out["spot"], mgmt)
+        except GatewayUnavailable:
+            raise
+        except Exception as e:  # the chart is still useful without the summary
+            log.warning("position summary for %s failed: %s", pid, e)
+        return out
 
     @app.get("/api/payoff/strategies")
     def strategy_payoffs():
