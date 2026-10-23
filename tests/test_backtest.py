@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from darwin_options.api.app import create_app
 from darwin_options.history import SOURCES, import_files
-from tests.test_history import write_month
+from test_history import write_month
 
 
 def _history(var: Path):
