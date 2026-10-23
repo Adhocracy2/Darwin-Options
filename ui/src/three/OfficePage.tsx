@@ -27,13 +27,13 @@ function useData() {
           api.risk().catch(() => null),
         ]);
         if (alive) setD({ status, open, closed, scan, events, perf, risk, error: null, at: new Date() });
-        return !!status.backtest;
+        return !!status.backtest || !!status.account?.is_market_open;
       } catch (e) {
         if (alive) setD((x) => ({ ...x, error: String(e) }));
         return false;
       }
     };
-    // every 30 s; every 4 s while a backtest runs, so its progress moves on screen
+    // every 30 s; every 4 s while the market is open or a backtest runs, so the work shows as it happens
     let t: ReturnType<typeof setTimeout>;
     const loop = async () => {
       const fast = await load();

@@ -102,3 +102,11 @@ def test_no_new_trades_in_first_30_minutes(engine, md):
     assert any("first 30 minutes" in r for c in rows for r in c["reasons"])
     md.clock_now = lambda: datetime(day.year, day.month, day.day, 10, 5, tzinfo=clock.NY)
     assert engine.run_once()["opened"]
+
+
+def test_cycle_reports_its_steps(engine):
+    from darwin_options.engine import CYCLE_KEY
+    engine.run_once()
+    st, _ = engine.store.get_setting(CYCLE_KEY)
+    assert st["finished"] and st["step"] is None and st["result"]["opened"] >= 1
+    assert st["steps"][:4] == ["reconcile", "manage", "scan", "risk"] and "orders" in st["steps"] and st["steps"][-1] == "snapshot"

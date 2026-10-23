@@ -181,18 +181,24 @@ function statusLine(a: THREE.Vector3, b: THREE.Vector3, height = 1.2) {
   return { group: mesh, set(st: LineState) { mat.color.set(LINE[st]); } };
 }
 
-// The order the engine hands out work each cycle.
+// The order the engine hands out work in a backtest (shown as a fast relay).
 const CYCLE = ["data", "scanner", "risk", "trading", "portfolio", "exits", "review"];
+// Which teams do each step of a real trading cycle (the trader reports the step it's on).
+const STEP_TEAMS: Record<string, string[]> = {
+  reconcile: ["portfolio"], manage: ["exits", "portfolio"], scan: ["data", "scanner"], risk: ["risk"],
+  orders: ["trading"], collect: ["data"], snapshot: ["portfolio"],
+};
 
 /**
- * Task flows on the curved links. A task (a glowing cube in the team's colour) leaves the engine,
+ * Task flows on the curved links. A task (a glowing cube in the team's colour) leaves the brain,
  * rides the link to the team, waits there while the team works, and comes back white (done).
- * While the market is open the engine relays one task per team in cycle order; while the
- * Supervisor answers, tasks shuttle between it and the engine; `burst` sends one task to each
- * team the Supervisor looked at.
+ * Only real work is shown: `targets()` names the teams working right now (the trader's current
+ * cycle step, or every team in turn during a backtest) and they get tasks until the step ends;
+ * while the Supervisor answers, tasks shuttle to its desk; `burst` sends one task to each team
+ * given (a cycle that just finished, or the teams the Supervisor looked at).
  */
 function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurve3>,
-  blockOf: (id: string) => TeamBlock | undefined, cycling: () => boolean, supervising: () => boolean,
+  blockOf: (id: string) => TeamBlock | undefined, targets: () => string[], supervising: () => boolean,
   fast: () => boolean, colourOf: (id: string) => string) {
   const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const haloGeo = new THREE.SphereGeometry(0.7, 16, 12);
@@ -214,8 +220,9 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
 
   let step = 0, relaying = false, supTask = false;
   const nextRelay = () => {
-    if (!cycling()) { relaying = false; return; }
-    const id = CYCLE[step % CYCLE.length];
+    const ids = targets();
+    if (!ids.length) { relaying = false; return; }
+    const id = ids[step % ids.length];
     step++;
     send(id, nextRelay);
   };
@@ -223,7 +230,7 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
   return {
     burst(ids: string[]) { ids.forEach((id, i) => setTimeout(() => send(id), i * 250)); },
     tick(dt: number) {
-      if (!relaying && cycling()) { relaying = true; nextRelay(); }
+      if (!relaying && targets().length) { relaying = true; nextRelay(); }
       if (!supTask && supervising()) {
         supTask = true;
         const loop = () => (supervising() ? send("supervisor", loop) : (supTask = false));
@@ -533,9 +540,9 @@ function build(stage: Stage, world: World) {
 
   let speed = 1;
   let current = world;
-  let cycling = false, fast = false;
+  let working: string[] = [], fast = false, lastFinished: string | null = null;
   const tasks = taskRunner(root, linkCurves, (id) => blocks.get(id),
-    () => cycling, () => supBusy, () => fast, (id) => world.teams.find((t) => t.id === id)?.color ?? "#ffd43b");
+    () => working, () => supBusy, () => fast, (id) => world.teams.find((t) => t.id === id)?.color ?? "#ffd43b");
   const apply = (w: World) => {
     w.teams.forEach((t) => { blocks.get(t.id)?.update(t); cards.get(t.id)?.update(t); });
     for (const id of ["gateway", "ibkr", "router", "isp"]) cards.get(id)?.update(asTeam(sysOf(w, id)));
@@ -548,8 +555,16 @@ function build(stage: Stage, world: World) {
     linkTechGw.set(w.brain.gatewayUp ? "ok" : "down");
     renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
-    cycling = (w.brain.marketOpen && w.brain.gatewayUp) || w.brain.backtesting;
+    // animate only real work: a backtest, or the step the trader is on right now
+    const cy = w.brain.cycle;
+    const fresh = (ts?: string | null) => !!ts && Date.now() - new Date(ts).getTime() < 10 * 60_000;
     fast = w.brain.backtesting;
+    working = fast ? CYCLE : cy && !cy.finished && cy.step && fresh(cy.at) ? STEP_TEAMS[cy.step] ?? [] : [];
+    // a cycle that finished since the last update (and recently): replay its steps once
+    if (cy?.finished && cy.finished !== lastFinished) {
+      if (lastFinished !== null && fresh(cy.finished)) tasks.burst([...new Set(cy.steps.flatMap((x) => STEP_TEAMS[x] ?? []))]);
+      lastFinished = cy.finished;
+    }
     gw.setUp(w.brain.gatewayUp);
     ib.setUp(!w.brain.gatewayUp ? null : w.links.gatewayIbkr === "down" ? false : true);
     speed = w.brain.marketOpen ? 1 : 0.35;

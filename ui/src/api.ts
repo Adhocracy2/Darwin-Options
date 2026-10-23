@@ -57,6 +57,8 @@ export type Status = {
   } | null;
   version?: string; // deployed git revision (short)
   backtest?: { id: string; done: number; total: number; at: string | null; label: string } | null; // a backtest running now
+  cycle?: { started: string; finished: string | null; step: string | null; steps: string[]; at: string;
+            result?: { exits: number; opened: number }; error?: string } | null; // the trader's current/last cycle
 };
 
 export type PricePoint = { d: string; close: number; upper: number | null; lower: number | null; mid: number | null; rsi: number | null; macd_hist: number | null };

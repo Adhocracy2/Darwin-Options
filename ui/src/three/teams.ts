@@ -40,6 +40,7 @@ export type Brain = {
   approved: number;
   equity: number | null;
   backtesting: boolean; // a backtest is running (the team relay runs fast to show it)
+  cycle: Status["cycle"]; // what the trader is doing now (step) or did in its last cycle
 };
 
 /** How busy a data link is: dots move fast (active), slowly (idle), not at all (down, red line). */
@@ -394,6 +395,7 @@ export function buildWorld(d: Inputs): World {
       marketOpen, gatewayUp, entriesOn: !!s?.allow_new_entries,
       lastScan: d.scan.ts, candidates: cands.length, approved, equity: d.risk?.equity ?? s?.account?.equity ?? null,
       backtesting: !!s?.backtest,
+      cycle: s?.cycle ?? null,
     },
     flow: { scanned: cands.length, passedChecks: approved, ordered: opensToday, topBlock },
   };

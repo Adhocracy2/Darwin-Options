@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..broker.base import NY, us_market_open
 from ..config import Config, load_config
-from ..engine import Engine
+from ..engine import CYCLE_KEY, Engine
 from ..factory import build_engine
 from ..ibkr import GatewayUnavailable
 from ..manager import ExitAction
@@ -78,7 +78,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
                 "activity": _activity(),
                 "network": net.snapshot() if cfg.network.enabled else None,
                 "version": version,
-                "backtest": _bt_status()}
+                "backtest": _bt_status(),
+                "cycle": engine.store.get_setting(CYCLE_KEY)[0] or None}
 
     def _bt_status():
         r = bt.running()

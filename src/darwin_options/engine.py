@@ -26,6 +26,7 @@ from .strategies import sameday
 from . import analysis
 
 RISK_RESET_KEY = "risk_reset"
+CYCLE_KEY = "cycle_progress"  # the current/last cycle's steps, for the dashboard
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class Engine:
         self._settings_version = 0
         self.stop_requested = False  # set on SIGTERM: place no new orders, finish the cycle
         self._daily_collected: dict = {}  # ticker -> date its daily chain was recorded
+        self._cycle_state: dict = {}
         self._build_strategies()
         self.refresh_settings()
 
@@ -352,7 +354,10 @@ class Engine:
         positions = self.store.positions("open")
         state = self.risk_state(acct.equity)
         sd_today = sameday.today_stats(self.store.positions(None), self.md.today())
-        for c in self.scan():
+        self._step("scan")
+        candidates = self.scan()
+        self._step("risk")
+        for c in candidates:
             decision = self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state, sd_today)
             if decision.approved and (c.underlying in touched or len(opened) >= self.cfg.max_new_trades_per_cycle):
                 decision.approved, decision.reasons = False, ["cycle limit / already traded this underlying"]
@@ -364,6 +369,7 @@ class Engine:
                 decision.approved, decision.reasons = False, [wait]
             rows.append(candidate_row(c, decision))
             if decision.approved and self.cfg.allow_new_entries:
+                self._step("orders")
                 try:
                     pos = self.open_candidate(c, decision.qty)
                 except Exception as e:
@@ -460,16 +466,40 @@ class Engine:
             log.warning("cycle skipped: %s", e)
             return {"skipped": str(e)}
 
+    def _step(self, name: str | None, **extra) -> None:
+        """What the cycle is doing now, for the dashboard (the 3D office animates that team)."""
+        from .store import now
+        st = self._cycle_state
+        if name:
+            st["steps"] = st.get("steps", []) + [name]
+        st.update(step=name, at=now(), **extra)
+        try:
+            self.store.set_setting(CYCLE_KEY, st)
+        except Exception:  # display only: never let it disturb trading
+            log.debug("couldn't save cycle progress", exc_info=True)
+
     def _run_cycle(self, force: bool) -> dict:
+        from .store import now
         self.refresh_settings()
         acct = self.broker.account()
         if not acct.is_market_open and not force:
             return {"skipped": "market closed"}
-        diffs = self.reconcile()
-        exits = self.manage()
-        opened = self.open_new() if not diffs else []
-        if diffs:
-            log.warning("skipping new entries until journal and broker agree: %s", diffs)
-        self.collect()
-        self.snapshot()
-        return {"exits": [a.reason for a in exits], "opened": [p.id for p in opened], "reconcile": diffs}
+        self._cycle_state = {"started": now(), "finished": None, "steps": []}
+        try:
+            self._step("reconcile")
+            diffs = self.reconcile()
+            self._step("manage")
+            exits = self.manage()
+            opened = self.open_new() if not diffs else []
+            if diffs:
+                log.warning("skipping new entries until journal and broker agree: %s", diffs)
+            self._step("collect")
+            self.collect()
+            self._step("snapshot")
+            self.snapshot()
+            result = {"exits": [a.reason for a in exits], "opened": [p.id for p in opened], "reconcile": diffs}
+        except Exception as e:
+            self._step(None, finished=now(), error=f"{type(e).__name__}: {e}")
+            raise
+        self._step(None, finished=now(), result={"exits": len(result["exits"]), "opened": len(result["opened"])})
+        return result
