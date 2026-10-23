@@ -56,6 +56,7 @@ export type Status = {
     internet_host: string; router_host: string | null; checked_at: string | null; error: string | null;
   } | null;
   version?: string; // deployed git revision (short)
+  backtest?: { id: string; done: number; total: number; at: string | null; label: string } | null; // a backtest running now
 };
 
 export type PricePoint = { d: string; close: number; upper: number | null; lower: number | null; mid: number | null; rsi: number | null; macd_hist: number | null };
@@ -88,6 +89,23 @@ export type Metrics = {
   unavailable: string[];
 };
 export type NewsItem = { title: string; link: string | null; ts: string | null; source: string; symbol: string };
+
+export type BacktestDataset = { id: string; path: string; label: string; first: string; last: string; days: number; symbols: string[] };
+export type BacktestStats = { trades: number; win_rate: number | null; pnl: number; avg_win: number | null; avg_loss: number | null; predicted_win_rate: number | null };
+export type BacktestRun = {
+  id: string; label: string; dataset: string; start: string; end: string; capital: number; strategies: string[];
+  status: "running" | "done" | "stopped" | "failed"; done: number; total: number; at: string | null;
+  started: string; finished: string | null; error: string | null; failed_cycles?: number;
+  overall?: (BacktestStats & { return_pct: number | null; max_drawdown: number; still_open: number; fees: number }) | null; // in lists
+  results?: {
+    overall: BacktestStats & { return_pct: number | null; max_drawdown: number; still_open: number; fees: number };
+    by_year: Record<string, BacktestStats>;
+    by_strategy: Record<string, BacktestStats>;
+    by_exit_reason: Record<string, { count: number; pnl: number }>;
+    equity: { ts: string; equity: number }[];
+    trades: { id: string; strategy: string; opened: string; closed: string; pnl: number; max_loss: number; exit: string | null; pop: number | null; description: string | null }[];
+  };
+};
 
 export type ChatMessage = { role: "user" | "assistant"; content: string; tools?: string[] };
 
@@ -296,6 +314,11 @@ export const api = {
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
   strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),
   payoff: (r: PayoffRequest) => req<Payoff>("/api/payoff", "POST", r),
+  backtestDatasets: () => req<BacktestDataset[]>("/api/backtests/datasets"),
+  backtests: () => req<BacktestRun[]>("/api/backtests"),
+  backtest: (id: string) => req<BacktestRun>(`/api/backtests/${id}`),
+  startBacktest: (b: { dataset: string; start?: string; end?: string; capital?: number }) => req<BacktestRun>("/api/backtests", "POST", b),
+  stopBacktest: (id: string) => req<{ stopping: string }>(`/api/backtests/${id}/stop`, "POST"),
   metrics: (fresh = false) => req<Metrics>(`/api/metrics${fresh ? "?fresh=true" : ""}`),
   news: () => req<NewsItem[]>("/api/news"),
   supervisor: () => req<{ available: boolean; reason?: string; model?: string }>("/api/supervisor"),

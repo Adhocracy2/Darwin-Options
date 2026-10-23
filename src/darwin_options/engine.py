@@ -151,7 +151,7 @@ class Engine:
             pos.legs.extend(new_legs)
             pos.commissions += fill.commission
         else:
-            pos = Position(c.strategy, c.underlying, new_legs, max_loss=c.max_loss * fill.qty,
+            pos = Position(c.strategy, c.underlying, new_legs, max_loss=c.max_loss * fill.qty, opened_at=self.store.clock(),
                            max_profit=c.max_profit * fill.qty, commissions=fill.commission,
                            entry_notes=candidate_row(c) | {"fill_quality": self._fill_quality(mid, c.net_credit, fill, c.legs)})
         self.store.save_position(pos)
@@ -192,8 +192,7 @@ class Engine:
         self._apply_close(pos, legs, fill, units)
         if not pos.open_legs:
             pos.status = "closed"
-            from .store import now
-            pos.closed_at = now()
+            pos.closed_at = self.store.clock()
             pos.exit_reason = action.reason
         self.store.save_position(pos)
         self.store.event("close", f"{pos.strategy} {pos.underlying}: {action.reason}", pos.id,
@@ -260,13 +259,12 @@ class Engine:
             return False
         half = Fill(fill.qty, fill.leg_prices, fill.commission / 2, fill.broker_order_id)
         self._apply_close(pos, old_legs, half, roll.qty)
-        from .store import now
         if not pos.open_legs:
-            pos.status, pos.closed_at, pos.exit_reason = "closed", now(), f"rolled: {action.reason}"
+            pos.status, pos.closed_at, pos.exit_reason = "closed", self.store.clock(), f"rolled: {action.reason}"
         self.store.save_position(pos)
         new_legs = [PositionLeg(l.contract.symbol, l.ratio * fill.qty, fill.leg_prices[l.contract.symbol])
                     for l in roll.new.legs]
-        new = Position(roll.new.strategy, pos.underlying, new_legs, max_loss=roll.new.max_loss * fill.qty,
+        new = Position(roll.new.strategy, pos.underlying, new_legs, max_loss=roll.new.max_loss * fill.qty, opened_at=self.store.clock(),
                        max_profit=roll.new.max_profit * fill.qty, commissions=half.commission,
                        entry_notes=candidate_row(roll.new) | {
                            "rolled_from": pos.id, "roll_count": roll_count(pos) + 1,
@@ -329,14 +327,14 @@ class Engine:
         from .portfolio import _ny_date
         from .broker.base import NY
         from datetime import datetime
-        today = datetime.now(NY).date().isoformat()
+        today = (self.now() or datetime.now(NY)).astimezone(NY).date().isoformat()  # historical in a backtest
         return sum(1 for p in self.store.positions(None)
                    if _ny_date(p.opened_at) == today and not (p.entry_notes or {}).get("rolled_from"))
 
     def risk_state(self, account_equity: float) -> RiskState:
         reset, _ = self.store.get_setting(RISK_RESET_KEY)
         return assess(self.cfg.risk, self.sizing_equity(account_equity), self._equity_series(),
-                      self.store.positions("closed"), reset.get("ts"), opened_today=self.opened_today())
+                      self.store.positions("closed"), reset.get("ts"), now=self.now(), opened_today=self.opened_today())
 
     def reset_drawdown(self) -> None:
         """Start measuring drawdown from now (lifts a drawdown halt). Logged in the journal."""

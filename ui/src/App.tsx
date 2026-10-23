@@ -3,10 +3,11 @@ import type { Candidate, Event, Performance, Position, Snapshot, Status } from "
 import { api } from "./api";
 import logoDark from "./assets/logo-dark.png";
 import logoLight from "./assets/logo-light.png";
+import { BacktestView } from "./components/BacktestView";
 import { StrategiesView } from "./components/StrategiesView";
 import { Journal, Overview, PerformanceView, Positions, Scanner } from "./components/Views";
 
-const TABS = ["Overview", "Positions", "Scanner", "Strategies", "Performance", "Journal"] as const;
+const TABS = ["Overview", "Positions", "Scanner", "Strategies", "Backtest", "Performance", "Journal"] as const;
 type Tab = (typeof TABS)[number];
 
 function brokerLabel(s: Status) {
@@ -92,6 +93,7 @@ export default function App() {
       {tab === "Strategies" && <StrategiesView live={status?.mode === "live"} onSaved={refresh} />}
       {tab === "Performance" && <PerformanceView perf={perf} />}
       {tab === "Journal" && <Journal events={events} />}
+      {tab === "Backtest" && <BacktestView />}
     </div>
   );
 }

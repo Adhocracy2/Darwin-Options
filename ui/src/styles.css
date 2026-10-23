@@ -201,3 +201,15 @@ button.link:disabled { opacity: 0.5; cursor: not-allowed; }
 .warn-text { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--text-primary); padding: 1px 5px; border-radius: 4px; }
 .prices-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
 .prices-row .btn { padding: 4px 10px; font-size: 12px; }
+
+/* backtest tab */
+.bt-form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.bt-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.bt-form select, .bt-form input { font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text-primary); }
+.bt-form select { max-width: 520px; }
+.bt-progress { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.bt-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--grid); overflow: hidden; }
+.bt-bar span { display: block; height: 100%; background: var(--accent); transition: width 0.5s; }
+tr.selected td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.bt-title { font-size: 16px; margin: 4px 0 12px; }
+.tile .value.pos { color: var(--good); } .tile .value.neg { color: var(--critical); }

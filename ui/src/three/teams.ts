@@ -39,6 +39,7 @@ export type Brain = {
   candidates: number;
   approved: number;
   equity: number | null;
+  backtesting: boolean; // a backtest is running (the team relay runs fast to show it)
 };
 
 /** How busy a data link is: dots move fast (active), slowly (idle), not at all (down, red line). */
@@ -392,6 +393,7 @@ export function buildWorld(d: Inputs): World {
       mode: s ? (s.mode === "live" ? "LIVE" : s.mode === "paper" ? "Paper" : "Sim") : "…",
       marketOpen, gatewayUp, entriesOn: !!s?.allow_new_entries,
       lastScan: d.scan.ts, candidates: cands.length, approved, equity: d.risk?.equity ?? s?.account?.equity ?? null,
+      backtesting: !!s?.backtest,
     },
     flow: { scanned: cands.length, passedChecks: approved, ordered: opensToday, topBlock },
   };

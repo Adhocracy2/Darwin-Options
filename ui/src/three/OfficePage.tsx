@@ -26,13 +26,20 @@ function useData() {
           api.risk().catch(() => null),
         ]);
         if (alive) setD({ status, open, closed, scan, events, perf, risk, error: null, at: new Date() });
+        return !!status.backtest;
       } catch (e) {
         if (alive) setD((x) => ({ ...x, error: String(e) }));
+        return false;
       }
     };
-    load();
-    const t = setInterval(load, 30_000);
-    return () => { alive = false; clearInterval(t); };
+    // every 30 s; every 4 s while a backtest runs, so its progress moves on screen
+    let t: ReturnType<typeof setTimeout>;
+    const loop = async () => {
+      const fast = await load();
+      if (alive) t = setTimeout(loop, fast ? 4_000 : 30_000);
+    };
+    loop();
+    return () => { alive = false; clearTimeout(t); };
   }, []);
   return d;
 }
@@ -55,6 +62,30 @@ function Details({ team, onClose }: { team: Team | SystemInfo; onClose: () => vo
         ))}
       </ul>
     </aside>
+  );
+}
+
+/** What Darwin is doing right now, under the logo: paper trading, live trading, or a backtest running. */
+function ModeBanner({ status }: { status: Status | null }) {
+  if (!status) return null;
+  const bt = status.backtest;
+  if (bt) {
+    const p = bt.total ? bt.done / bt.total : 0;
+    return (
+      <div className="c3-mode backtest" title={bt.label}>
+        <span className="c3-mode-dot" /><b>BACKTESTING</b>
+        <span className="c3-mode-date">{bt.at ? new Date(bt.at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "starting…"}</span>
+        <span className="c3-mode-bar"><i style={{ width: `${(p * 100).toFixed(1)}%` }} /></span>
+        <span className="c3-mode-count">{bt.done}/{bt.total || "?"} days</span>
+      </div>
+    );
+  }
+  const live = status.mode === "live";
+  return (
+    <div className={`c3-mode ${live ? "live" : "paper"}`}>
+      <span className="c3-mode-dot" /><b>{live ? "LIVE TRADING" : status.mode === "sim" ? "SIMULATION" : "PAPER TRADING"}</b>
+      <span className="c3-mode-sub">{status.account?.is_market_open ? "market open" : "market closed"}</span>
+    </div>
   );
 }
 
@@ -114,6 +145,7 @@ export default function OfficePage() {
 
       <div className="c3-stage">
         <img className="c3-logo" src={logoDark} alt="Darwin Options" />
+        <ModeBanner status={data.status} />
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
             <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />

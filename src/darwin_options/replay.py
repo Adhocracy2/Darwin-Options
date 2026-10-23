@@ -24,9 +24,11 @@ from .store import Store
 
 
 def replay(cfg: Config, start: str | None = None, end: str | None = None,
-           journal: str | None = None, log=None, data: str | None = None) -> dict:
+           journal: str | None = None, log=None, data: str | None = None,
+           progress=None, should_stop=None) -> dict:
     """`data`: a market-data file to replay instead of the live recordings, e.g. an imported
-    history database (`darwin import-history`)."""
+    history database (`darwin import-history`). `progress(done, total, now)` is called after each
+    step; `should_stop()` returning True ends the run early (results so far are kept)."""
     cfg = copy.deepcopy(cfg)
     cfg.mode, cfg.risk.pilot = "sim", False
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -38,11 +40,16 @@ def replay(cfg: Config, start: str | None = None, end: str | None = None,
     if not moments:
         return {"error": "no recorded cycles in that range", "recorded": data or cfg.record.path}
     store = Store(cfg.db_path)
+    store.clock = lambda: md.at.astimezone(timezone.utc).isoformat(timespec="seconds")  # history's time, not now
     broker = SimBroker(md, store, cfg.risk.capital or cfg.sim_starting_equity, cfg.execution.slippage_frac,
                        cfg.execution.commission_per_contract, always_open=True)
     eng = Engine(cfg, md, broker, store)
     errors = 0
+    stopped = False
     for i, t in enumerate(moments):
+        if should_stop and should_stop():
+            stopped = True
+            break
         md.at = t
         try:
             result = eng.run_once(force=True)
@@ -53,7 +60,9 @@ def replay(cfg: Config, start: str | None = None, end: str | None = None,
             continue
         if log and (result.get("opened") or result.get("exits")):
             log.info("replay %s: %s", md.clock_now().strftime("%Y-%m-%d %H:%M"), result)
+        if progress:
+            progress(i + 1, len(moments), t)
     perf = performance(store.positions(None), store.snapshots())
-    return {"journal": cfg.db_path, "cycles": len(moments), "failed_cycles": errors,
+    return {"journal": cfg.db_path, "cycles": len(moments), "failed_cycles": errors, "stopped": stopped,
             "first": moments[0].astimezone(md.clock_now().tzinfo), "last": moments[-1].astimezone(md.clock_now().tzinfo),
             "still_open": len(store.positions("open")), "performance": perf}

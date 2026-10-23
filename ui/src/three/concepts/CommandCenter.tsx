@@ -18,7 +18,7 @@ const PALETTE: Palette = {
   chair: "#343a40", skin: ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#ffdbac"], roughness: 0.6,
 };
 
-const HOME = { pos: new THREE.Vector3(0, 30, 45), target: new THREE.Vector3(0, 5.2, 0.8) }; // centred on the circle
+const HOME = { pos: new THREE.Vector3(0, 32, 49), target: new THREE.Vector3(0, 8.2, 0.8) }; // circle a little below centre, under the logo
 // infrastructure shown: fly in to Technology and what it looks after (set once TECH is known, below)
 let SHOWN = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
 
@@ -193,7 +193,7 @@ const CYCLE = ["data", "scanner", "risk", "trading", "portfolio", "exits", "revi
  */
 function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurve3>,
   blockOf: (id: string) => TeamBlock | undefined, cycling: () => boolean, supervising: () => boolean,
-  colourOf: (id: string) => string) {
+  fast: () => boolean, colourOf: (id: string) => string) {
   const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const haloGeo = new THREE.SphereGeometry(0.7, 16, 12);
   type Task = { id: string; t: number; phase: "out" | "wait" | "back"; mesh: THREE.Group; mat: THREE.MeshBasicMaterial; done?: () => void };
@@ -232,7 +232,7 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
       for (let i = live.length - 1; i >= 0; i--) {
         const k = live[i];
         const curve = curves.get(k.id)!;
-        k.t += dt / (k.phase === "wait" ? WAIT : DUR);
+        k.t += (dt * (fast() ? 3 : 1)) / (k.phase === "wait" ? WAIT : DUR); // a backtest relays 3x faster
         if (k.t >= 1) {
           k.t = 0;
           if (k.phase === "out") { k.phase = "wait"; blockOf(k.id)?.setHighlight(true); }
@@ -310,7 +310,7 @@ function build(stage: Stage, world: World) {
     const out = c.clone().normalize();
     // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
     // so nothing covers the middle (the engine and its summary)
-    if (team.id === "technology") card.obj.position.copy(c).addScaledVector(OUT, 0.8).add(new THREE.Vector3(0, 2.9, 0)); // above: clear of its status strip
+    if (team.id === "technology") card.obj.position.copy(c).add(new THREE.Vector3(4.6, 0.6, 1.2)); // to the right: clear of its strip and the banner
     else if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
     else if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
     else card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.6, 0, -1.2)); // beside, at floor level, clear of the circle
@@ -533,9 +533,9 @@ function build(stage: Stage, world: World) {
 
   let speed = 1;
   let current = world;
-  let cycling = false;
+  let cycling = false, fast = false;
   const tasks = taskRunner(root, linkCurves, (id) => blocks.get(id),
-    () => cycling, () => supBusy, (id) => world.teams.find((t) => t.id === id)?.color ?? "#ffd43b");
+    () => cycling, () => supBusy, () => fast, (id) => world.teams.find((t) => t.id === id)?.color ?? "#ffd43b");
   const apply = (w: World) => {
     w.teams.forEach((t) => { blocks.get(t.id)?.update(t); cards.get(t.id)?.update(t); });
     for (const id of ["gateway", "ibkr", "router", "isp"]) cards.get(id)?.update(asTeam(sysOf(w, id)));
@@ -548,7 +548,8 @@ function build(stage: Stage, world: World) {
     linkTechGw.set(w.brain.gatewayUp ? "ok" : "down");
     renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
-    cycling = w.brain.marketOpen && w.brain.gatewayUp;
+    cycling = (w.brain.marketOpen && w.brain.gatewayUp) || w.brain.backtesting;
+    fast = w.brain.backtesting;
     gw.setUp(w.brain.gatewayUp);
     ib.setUp(!w.brain.gatewayUp ? null : w.links.gatewayIbkr === "down" ? false : true);
     speed = w.brain.marketOpen ? 1 : 0.35;

@@ -32,6 +32,7 @@ def now() -> str:
 class Store:
     def __init__(self, path: str):
         self.path = path
+        self.clock = now  # timestamps for everything written; backtests set it to the historical time
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._mem = sqlite3.connect(":memory:", check_same_thread=False) if path == ":memory:" else None
@@ -71,7 +72,7 @@ class Store:
     def event(self, kind: str, message: str, position_id: str | None = None, data: dict | None = None) -> None:
         with self._conn() as c:
             c.execute("INSERT INTO events (ts, kind, position_id, message, data) VALUES (?,?,?,?,?)",
-                      (now(), kind, position_id, message, json.dumps(data or {}, default=str)))
+                      (self.clock(), kind, position_id, message, json.dumps(data or {}, default=str)))
 
     def events(self, limit: int = 200) -> list[dict]:
         with self._conn() as c:
@@ -82,7 +83,7 @@ class Store:
                  data: dict | None = None) -> None:
         with self._conn() as c:
             c.execute("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?,?,?)",
-                      (now(), equity, open_risk, realized, unrealized, json.dumps(data or {})))
+                      (self.clock(), equity, open_risk, realized, unrealized, json.dumps(data or {})))
 
     def snapshots(self, limit: int = 5000) -> list[dict]:
         with self._conn() as c:
@@ -100,12 +101,12 @@ class Store:
         with self._conn() as c:
             r = c.execute("SELECT version FROM settings WHERE key = ?", (key,)).fetchone()
             version = (r["version"] if r else 0) + 1
-            c.execute("INSERT OR REPLACE INTO settings VALUES (?,?,?,?)", (key, json.dumps(value), version, now()))
+            c.execute("INSERT OR REPLACE INTO settings VALUES (?,?,?,?)", (key, json.dumps(value), version, self.clock()))
         return version
 
     def save_scan(self, rows: list[dict]) -> None:
         with self._conn() as c:
-            c.execute("INSERT INTO scans (ts, data) VALUES (?, ?)", (now(), json.dumps(rows, default=str)))
+            c.execute("INSERT INTO scans (ts, data) VALUES (?, ?)", (self.clock(), json.dumps(rows, default=str)))
             c.execute("DELETE FROM scans WHERE id NOT IN (SELECT id FROM scans ORDER BY id DESC LIMIT 50)")
 
     def latest_scan(self) -> dict:

@@ -25,6 +25,7 @@ from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
 from ..network import NetworkMonitor
 from .. import recorder
+from ..backtest import BacktestRunner
 from ..report import performance
 from ..supervisor import Supervisor, SupervisorUnavailable
 from ..review import review as review_trades
@@ -76,7 +77,12 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
                 "strategies": [s.name for s in engine.strategies],
                 "activity": _activity(),
                 "network": net.snapshot() if cfg.network.enabled else None,
-                "version": version}
+                "version": version,
+                "backtest": _bt_status()}
+
+    def _bt_status():
+        r = bt.running()
+        return {"id": r["id"], "done": r["done"], "total": r["total"], "at": r["at"], "label": r["label"]} if r else None
 
     def _activity() -> dict:
         """When prices and orders last moved through IB Gateway (for the 3D view's data flows)."""
@@ -424,6 +430,41 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
                     log.warning("ibkr news %s: %s", sym, e)
         out.sort(key=lambda x: x.get("ts") or "", reverse=True)
         return out[:40]
+
+    # ---- backtests ----------------------------------------------------------------
+
+    bt = BacktestRunner(Path(cfg.db_path).parent, cfg.record.path, lambda: engine.cfg)
+
+    @app.get("/api/backtests/datasets")
+    def backtest_datasets():
+        return bt.datasets()
+
+    @app.get("/api/backtests")
+    def backtest_list():
+        return bt.list()
+
+    @app.post("/api/backtests")
+    def backtest_start(body: dict = Body(...)):
+        """Body: {dataset, start?: YYYY-MM-DD, end?: YYYY-MM-DD, capital?: number, label?: str}"""
+        try:
+            return bt.start(body.get("dataset", ""), body.get("start") or None, body.get("end") or None,
+                            body.get("capital") or None, body.get("label") or None)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+
+    @app.get("/api/backtests/{run_id}")
+    def backtest_get(run_id: str):
+        run = bt.get(run_id)
+        if not run:
+            raise HTTPException(404, "no such backtest")
+        return run
+
+    @app.post("/api/backtests/{run_id}/stop")
+    def backtest_stop(run_id: str):
+        bt.cancel(run_id)
+        return {"stopping": run_id}
 
     # ---- supervisor (chat) -------------------------------------------------------
 

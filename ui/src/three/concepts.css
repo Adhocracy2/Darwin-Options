@@ -21,7 +21,7 @@
 .c3-legend { position: absolute; left: 16px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 7px 12px; border-radius: 10px; background: var(--c3-bar); color: var(--c3-muted); font-size: 12px; border: 1px solid var(--c3-line); z-index: 2; }
 .c3-legend i, .c3-agents i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .c3-hint { opacity: 0.8; }
-.c3-tip { position: absolute; left: 50%; top: 104px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
+.c3-tip { position: absolute; left: 50%; top: 200px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
 .c3-error { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--c3-bad); color: #fff; z-index: 2; }
 .c3-mobile { display: none; }
 @media (max-width: 899px) {
@@ -144,4 +144,27 @@
 .cc-card.behind, .cc-sup.behind { opacity: 0.12; pointer-events: none !important; }
 
 /* logo, top centre of the 3D office (always the dark version) */
-.c3-logo { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); height: 84px; width: auto; z-index: 2; pointer-events: none; }
+.c3-logo { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); height: 140px; width: auto; z-index: 2; pointer-events: none; }
+
+/* mode banner under the logo: paper / live / backtesting, animated */
+.c3-mode { position: absolute; top: 152px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px; border-radius: 999px; font-size: 12px; letter-spacing: 0.04em; white-space: nowrap; pointer-events: none;
+  background: rgba(10, 15, 30, 0.75); border: 1px solid; overflow: hidden; }
+.c3-mode b { letter-spacing: 0.14em; }
+.c3-mode-dot { width: 9px; height: 9px; border-radius: 50%; animation: c3-pulse 1.4s ease-in-out infinite; }
+.c3-mode-sub, .c3-mode-count { color: var(--c3-muted); }
+.c3-mode.paper { border-color: rgba(90, 216, 255, 0.55); color: #bfefff; }
+.c3-mode.paper .c3-mode-dot { background: #5ad8ff; box-shadow: 0 0 10px #5ad8ff; }
+.c3-mode.paper::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(90, 216, 255, 0.18) 50%, transparent 70%);
+  transform: translateX(-100%); animation: c3-sweep 3.2s ease-in-out infinite; }
+.c3-mode.live { border-color: #ff6b6b; color: #ffc9c9; }
+.c3-mode.live .c3-mode-dot { background: #ff6b6b; box-shadow: 0 0 10px #ff6b6b; }
+.c3-mode.backtest { border-color: #b197fc; color: #e5dbff; }
+.c3-mode.backtest .c3-mode-dot { background: #b197fc; box-shadow: 0 0 10px #b197fc; animation-duration: 0.6s; }
+.c3-mode-date { font-variant-numeric: tabular-nums; font-weight: 700; color: #fff; min-width: 96px; text-align: center; }
+.c3-mode-bar { width: 140px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; position: relative; }
+.c3-mode-bar i { display: block; height: 100%; background: linear-gradient(90deg, #7048e8, #b197fc); transition: width 1s linear; }
+.c3-mode-bar::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: c3-sweep 1.2s linear infinite; }
+@keyframes c3-pulse { 0%, 100% { opacity: 0.45; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes c3-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
