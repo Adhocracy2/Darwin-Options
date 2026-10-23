@@ -7,6 +7,7 @@ export type SceneHandle = {
   select: (id: string | null) => void;
   hover: (id: string | null) => void;
   setBusy?: (busy: boolean) => void;
+  taskBurst?: (teamIds: string[]) => void;
   dispose?: () => void;
 };
 
@@ -22,6 +23,7 @@ export function useScene(
   onSelect: (id: string | null) => void,
   onHover: (id: string | null) => void,
   busy = false,
+  burst: { ids: string[]; n: number } | null = null,
 ) {
   const ref = useRef<HTMLDivElement>(null);
   const st = useRef<{ stage: Stage; handle: SceneHandle; shape: string } | null>(null);
@@ -54,6 +56,7 @@ export function useScene(
 
   useEffect(() => { st.current?.handle.select(selected); }, [selected]);
   useEffect(() => { st.current?.handle.setBusy?.(busy); }, [busy]);
+  useEffect(() => { if (burst) st.current?.handle.taskBurst?.(burst.ids); }, [burst]);
 
   return ref;
 }

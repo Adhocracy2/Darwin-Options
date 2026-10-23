@@ -7,4 +7,6 @@ export type ConceptProps = {
   onHover: (id: string | null) => void;
   /** The Supervisor is answering: animate its desk and link. */
   busy?: boolean;
+  /** Teams the Supervisor just looked at: send each a task. */
+  burst?: { ids: string[]; n: number } | null;
 };

@@ -136,3 +136,5 @@
 .cc-card.compact .c-big span { font-size: 10px; }
 .cc-card.compact .c-row { font-size: 10px; }
 .cc-card.compact .c-alert { margin-top: 4px; padding: 2px 6px; font-size: 10px; }
+.c3-legend i.task { border-radius: 2px; background: linear-gradient(135deg, #22b8cf, #4c6ef5 50%, #e64980); }
+.c3-legend i.task.done { background: #fff; }

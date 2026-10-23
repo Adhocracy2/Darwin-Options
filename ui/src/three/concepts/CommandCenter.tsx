@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { Stage } from "../stage";
 import {
-  cardHtml, disposeGroup, makeBrain, makeCard, makeFlow, makeTeamBlock, roundedSlab,
+  cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, roundedSlab,
   type Palette, type TeamBlock,
 } from "../kit";
 import type { LineState, SystemInfo, Team, TeamId, World } from "../teams";
@@ -35,7 +35,7 @@ const posOf = (id: string) => {
   const top = TOP.has(id), r = top ? TOP_R : BOTTOM_R, a = (ANGLE[id as TeamId] * Math.PI) / 180;
   return new THREE.Vector3(Math.cos(a) * r.x, top ? TOP_Y : 0, -Math.sin(a) * r.z);
 };
-const BRAIN = new THREE.Vector3(0, MID_Y + 1.6, -0.3); // where every team's link meets the engine
+const BRAIN_Y = 4.4; // the brain floats this high above the circle, clear of the figures on its face
 // Outside systems, drawn small just beyond the ring on the right (SYS = their scale).
 const SYS = 0.55;
 const GATEWAY = new THREE.Vector3(16.2, 0, 0.6);
@@ -170,6 +170,72 @@ function statusLine(a: THREE.Vector3, b: THREE.Vector3, height = 1.2) {
   return { group: mesh, set(st: LineState) { mat.color.set(LINE[st]); } };
 }
 
+// The order the engine hands out work each cycle.
+const CYCLE = ["data", "scanner", "risk", "trading", "portfolio", "exits", "review"];
+
+/**
+ * Task flows on the curved links. A task (a glowing cube in the team's colour) leaves the engine,
+ * rides the link to the team, waits there while the team works, and comes back white (done).
+ * While the market is open the engine relays one task per team in cycle order; while the
+ * Supervisor answers, tasks shuttle between it and the engine; `burst` sends one task to each
+ * team the Supervisor looked at.
+ */
+function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurve3>,
+  blockOf: (id: string) => TeamBlock | undefined, cycling: () => boolean, supervising: () => boolean,
+  colourOf: (id: string) => string) {
+  const geo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
+  const haloGeo = new THREE.SphereGeometry(0.85, 16, 12);
+  type Task = { id: string; t: number; phase: "out" | "wait" | "back"; mesh: THREE.Group; mat: THREE.MeshBasicMaterial; done?: () => void };
+  const live: Task[] = [];
+  const DUR = 1.1, WAIT = 0.5;
+
+  const send = (id: string, done?: () => void) => {
+    if (!curves.has(id)) { done?.(); return; }
+    const mat = new THREE.MeshBasicMaterial({ color: colourOf(id) });
+    const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({
+      color: colourOf(id), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(geo, mat), halo);
+    g.position.copy(curves.get(id)!.getPointAt(0)).add(new THREE.Vector3(0, 0.6, 0)); // start at the engine, not the origin
+    root.add(g);
+    live.push({ id, t: 0, phase: "out", mesh: g, mat, done });
+  };
+
+  let step = 0, relaying = false, supTask = false;
+  const nextRelay = () => {
+    if (!cycling()) { relaying = false; return; }
+    const id = CYCLE[step % CYCLE.length];
+    step++;
+    send(id, nextRelay);
+  };
+
+  return {
+    burst(ids: string[]) { ids.forEach((id, i) => setTimeout(() => send(id), i * 250)); },
+    tick(dt: number) {
+      if (!relaying && cycling()) { relaying = true; nextRelay(); }
+      if (!supTask && supervising()) {
+        supTask = true;
+        const loop = () => (supervising() ? send("supervisor", loop) : (supTask = false));
+        loop();
+      }
+      for (let i = live.length - 1; i >= 0; i--) {
+        const k = live[i];
+        const curve = curves.get(k.id)!;
+        k.t += dt / (k.phase === "wait" ? WAIT : DUR);
+        if (k.t >= 1) {
+          k.t = 0;
+          if (k.phase === "out") { k.phase = "wait"; blockOf(k.id)?.setHighlight(true); }
+          else if (k.phase === "wait") { k.phase = "back"; k.mat.color.set("#ffffff"); blockOf(k.id)?.setHighlight(false); }
+          else { k.mesh.removeFromParent(); live.splice(i, 1); k.done?.(); continue; }
+        }
+        const u = k.phase === "out" ? k.t : k.phase === "wait" ? 1 : 1 - k.t;
+        k.mesh.position.copy(curve.getPointAt(u)).add(new THREE.Vector3(0, 0.6, 0));
+        k.mesh.rotation.y += dt * 3;
+      }
+    },
+  };
+}
+
 function build(stage: Stage, world: World) {
   const root = new THREE.Group();
   stage.add(root);
@@ -179,7 +245,7 @@ function build(stage: Stage, world: World) {
   key.position.set(8, 16, 10);
   root.add(key);
   const glow = new THREE.PointLight("#5ad8ff", 30, 14, 1.6);
-  glow.position.set(0, MID_Y + 1.5, 0);
+  glow.position.set(0, MID_Y + BRAIN_Y - 0.5, 0);
   root.add(glow);
 
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({ color: "#0d1426", roughness: 1 }));
@@ -189,23 +255,22 @@ function build(stage: Stage, world: World) {
   const grid = new THREE.GridHelper(110, 110, "#1c2a4a", "#141f38");
   grid.position.y = -0.29;
   root.add(grid);
-  // top ring: a faint see-through plane with a glowing rim; a light column joins the three layers
-  const topPlane = new THREE.Mesh(new THREE.RingGeometry(3.2, 12.5, 96, 1),
-    new THREE.MeshBasicMaterial({ color: "#3b5bdb", transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }));
-  topPlane.rotation.x = -Math.PI / 2;
-  topPlane.scale.set(1, 0.72, 1); // flattened like the rings
-  topPlane.position.y = TOP_Y - 0.32;
-  root.add(topPlane);
-  for (const r of [3.2, 12.5]) {
-    const rim = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, r, r * 0.72).getPoints(160).map((p) => new THREE.Vector3(p.x, TOP_Y - 0.3, p.y))),
-      new THREE.LineBasicMaterial({ color: "#5c7cfa", transparent: true, opacity: 0.5 }));
-    root.add(rim);
-  }
-  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, TOP_Y, 24, 1, true),
-    new THREE.MeshBasicMaterial({ color: "#5ad8ff", transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-  column.position.y = TOP_Y / 2 - 0.3;
-  root.add(column);
+  // thick curved blue links from the edge of the engine's circle to each platform: down to the
+  // floor teams, up to the top teams
+  const linkMat = new THREE.MeshStandardMaterial({ color: "#2b3f7a", roughness: 0.6, emissive: "#1c2d63", emissiveIntensity: 0.6 });
+  const platformLink = (c: THREE.Vector3) => {
+    const dir = new THREE.Vector3(c.x, 0, c.z).normalize();
+    const start = dir.clone().multiplyScalar(PLAZA_R + 0.1).setY(MID_Y - 0.15);
+    const end = c.clone().sub(dir.clone().multiplyScalar(1.9)).setY(c.y - 0.12); // the platform's near edge
+    const up = c.y > MID_Y;
+    const curve = new THREE.CubicBezierCurve3(start, start.clone().add(dir.clone().multiplyScalar(2.2)),
+      end.clone().add(new THREE.Vector3(0, up ? -2.2 : 2.6, 0)).sub(dir.clone().multiplyScalar(0.6)), end);
+    const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.26, 10), linkMat);
+    m.scale.y = 1; // round tube reads as a thick line from any angle
+    root.add(m);
+    return curve;
+  };
+  const linkCurves = new Map<string, THREE.CubicBezierCurve3>();
   const roadMat = new THREE.MeshStandardMaterial({ color: "#1b2540", roughness: 0.9 });
   const road = (from: THREE.Vector3, to: THREE.Vector3, width = 1.1) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(width, 0.04, from.distanceTo(to)), roadMat);
@@ -217,7 +282,6 @@ function build(stage: Stage, world: World) {
   const blocks = new Map<string, TeamBlock>();
   const cards = new Map<string, ReturnType<typeof makeCard>>();
   const centers = new Map<string, THREE.Vector3>();
-  const teamFlows: ReturnType<typeof makeFlow>[] = [];
 
   // ---- teams on the ring
   for (const team of world.teams) {
@@ -234,20 +298,13 @@ function build(stage: Stage, world: World) {
     root.add(block.group);
     blocks.set(team.id, block);
     const top = TOP.has(team.id);
-    if (!top) road(c.clone().multiplyScalar(1.2 / c.length()), c.clone().multiplyScalar(1 - 2.2 / c.length()));
+    linkCurves.set(team.id, platformLink(c));
 
-    const f = makeFlow(c.clone().setY(c.y + 1.4), BRAIN, { color: team.color, height: top ? 1.0 : 2.4 });
-    root.add(f.group);
-    teamFlows.push(f);
-
-    // top-ring teams get small tags (name + number); click for the full panel
-    const card = top
-      ? makeCard(team, "cc-card mini", stage, (t) => cardHtml(t, { rows: 0 }))
-      : makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1 })); // full details on click
+    const card = makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1 })); // full details on click
     const out = c.clone().normalize();
     // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
     // so nothing covers the middle (the engine and its summary)
-    if (top) card.obj.position.copy(c).add(new THREE.Vector3(0, 2.3, 0)); // just above its platform
+    if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
     else if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
     else card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.6, 0, -1.2)); // beside, at floor level, clear of the circle
     root.add(card.obj);
@@ -272,45 +329,54 @@ function build(stage: Stage, world: World) {
   ring.rotation.x = Math.PI / 2;
   ring.position.y = -0.09;
   const brain = makeBrain("#7ee3ff");
-  brain.group.position.set(0, 1.7, -0.3);
+  brain.group.position.set(0, BRAIN_Y, -0.3);
   engine.add(plaza, ring, brain.group);
-  // account summary painted flat on the face of the circle, in front of the brain
+  // the circle's face: FORECAST (realised + unrealised) in the middle, six figures round the inside edge
   const hudCanvas = document.createElement("canvas");
-  hudCanvas.width = 1024; hudCanvas.height = 640; // drawn tall: the camera sees the circle at a slant
+  hudCanvas.width = hudCanvas.height = 1024;
   const hudTex = new THREE.CanvasTexture(hudCanvas);
   hudTex.colorSpace = THREE.SRGBColorSpace;
   hudTex.anisotropy = 8;
-  const hud = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 3.5),
+  const hud = new THREE.Mesh(new THREE.CircleGeometry(PLAZA_R - 0.05, 96),
     new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthWrite: false, toneMapped: false }));
   hud.rotation.x = -Math.PI / 2; // lying on the circle
-  hud.position.set(0, -0.085, 1.45);
+  hud.position.y = -0.085;
   engine.add(hud);
   const money = (v: number) => `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   const pct = (v: number | null, signed = false) => v == null ? "–" : `${signed && v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`;
   const colour = (v: number | null) => (v == null || Math.abs(v) < 1e-9 ? "#e7ecf5" : v > 0 ? "#69db7c" : "#ff8787");
+  const STRETCH = 1.55; // text drawn tall: the camera sees the circle at a slant
+  const text = (g: CanvasRenderingContext2D, str: string, x: number, y: number, font: string, col: string, glow: string, blur: number) => {
+    g.save();
+    g.translate(x, y);
+    g.scale(1, STRETCH);
+    g.font = font;
+    g.fillStyle = col;
+    g.shadowColor = glow;
+    g.shadowBlur = blur;
+    g.fillText(str, 0, 0);
+    g.restore();
+  };
   const renderHud = (w: World) => {
     const m = w.summary;
-    const cells: [string, string, string][] = [
-      ["REALISED", money(m.realized), colour(m.realized)], ["UNREALISED", money(m.unrealized), colour(m.unrealized)],
-      ["OPEN", String(m.open), "#e7ecf5"], ["%RPT", pct(m.riskPerTrade), "#e7ecf5"],
-      ["%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "#ff8787" : "#e7ecf5"], ["%TODAY", pct(m.today, true), colour(m.today)],
-    ];
     const g = hudCanvas.getContext("2d")!;
-    g.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    g.clearRect(0, 0, 1024, 1024);
     g.textAlign = "center";
-    cells.forEach(([label, value, col], i) => {
-      const x = 180 + (i % 3) * 332, y = i < 3 ? 250 : 545;
-      g.shadowColor = "rgba(90, 216, 255, 0.8)";
-      g.shadowBlur = 18;
-      g.fillStyle = "#8fd3ff";
-      g.font = "700 50px system-ui, sans-serif";
-      g.fillText(label, x, y - 112);
-      g.shadowColor = col;
-      g.shadowBlur = 24;
-      g.fillStyle = col;
-      g.font = "700 106px system-ui, sans-serif";
-      g.fillText(value, x, y + 12);
-    });
+    g.textBaseline = "middle";
+    const total = m.realized + m.unrealized;
+    text(g, "FORECAST", 512, 420, "700 46px system-ui, sans-serif", "#8fd3ff", "rgba(90,216,255,0.9)", 18);
+    text(g, money(total), 512, 535, "800 150px system-ui, sans-serif", colour(total), colour(total), 30);
+    // round the inside edge, clockwise from the top left (canvas top = far side of the circle)
+    const cells: [string, string, string, number][] = [
+      ["REALISED", money(m.realized), colour(m.realized), 150], ["UNREALISED", money(m.unrealized), colour(m.unrealized), 90],
+      ["OPEN", String(m.open), "#e7ecf5", 30], ["%RPT", pct(m.riskPerTrade), "#e7ecf5", 330],
+      ["%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "#ff8787" : "#e7ecf5", 270], ["%TODAY", pct(m.today, true), colour(m.today), 210],
+    ];
+    for (const [label, value, col, deg] of cells) {
+      const a = (deg * Math.PI) / 180, x = 512 + Math.cos(a) * 365, y = 512 - Math.sin(a) * 340;
+      text(g, label, x, y - 44, "700 32px system-ui, sans-serif", "#8fd3ff", "rgba(90,216,255,0.8)", 14);
+      text(g, value, x, y + 18, "700 60px system-ui, sans-serif", col, col, 18);
+    }
     hudTex.needsUpdate = true;
   };
   engine.position.y = MID_Y; // the middle layer
@@ -330,12 +396,11 @@ function build(stage: Stage, world: World) {
     minSize: { w: 3.2, d: 3.6 }, // same size as the smaller team floors
   });
   supBlock.group.position.copy(SUPERVISOR);
+  linkCurves.set("supervisor", platformLink(SUPERVISOR));
   supBlock.group.rotation.y = Math.PI / 4;
   root.add(supBlock.group);
   blocks.set("supervisor", supBlock);
   centers.set("supervisor", SUPERVISOR.clone().setY(SUPERVISOR.y + 0.6));
-  const supFlow = makeFlow(SUPERVISOR.clone().setY(SUPERVISOR.y + 1.4), BRAIN, { color: "#ffd43b", height: 1.0 });
-  root.add(supFlow.group);
   let supBusy = false;
 
   // ---- IB Gateway (on AI1) and IBKR (their servers)
@@ -357,11 +422,11 @@ function build(stage: Stage, world: World) {
   centers.set("ibkr", IBKR.clone());
 
   const at = (id: string) => centers.get(id)!.clone();
-  const linkDataGw = makeFlow(at("data").setY(1.3), GATEWAY.clone().setY(1.3), { color: "#22b8cf", height: 2.0 });
-  const linkTradeGw = makeFlow(at("trading").setY(1.3), GATEWAY.clone().setY(1.0), { color: "#fab005", height: 1.6 });
-  const linkPortGw = makeFlow(at("portfolio").setY(1.3), GATEWAY.clone().setY(0.6), { color: "#40c057", height: 2.2 });
-  const linkGwIbkr = makeFlow(GATEWAY.clone().setY(1.9), IBKR.clone().setY(IBKR.y + 0.35), { color: "#ff8787", height: 2.0, dots: 3, lane: 0.12 });
-  for (const f of [linkDataGw, linkTradeGw, linkPortGw, linkGwIbkr]) root.add(f.group);
+  // connections to IB Gateway and IBKR: plain status lines (green working, red down)
+  const linkDataGw = statusLine(at("data").setY(0.6), GATEWAY.clone().setY(0.9), 1.0);
+  const linkGwIbkr = statusLine(GATEWAY.clone().setY(1.7), IBKR.clone().setY(IBKR.y + 0.3), 1.2);
+  for (const l of [linkDataGw, linkGwIbkr]) root.add(l.group);
+  const asLine = (st: string): LineState => (st === "down" ? "down" : st === "warn" ? "unknown" : "ok");
 
   // ---- home network: router and ISP, joined by plain status lines AI1 -> router -> ISP -> internet
   const router = routerBox();
@@ -404,6 +469,9 @@ function build(stage: Stage, world: World) {
 
   let speed = 1;
   let current = world;
+  let cycling = false;
+  const tasks = taskRunner(root, linkCurves, (id) => blocks.get(id),
+    () => cycling, () => supBusy, (id) => world.teams.find((t) => t.id === id)?.color ?? "#ffd43b");
   const apply = (w: World) => {
     w.teams.forEach((t) => { blocks.get(t.id)?.update(t); cards.get(t.id)?.update(t); });
     for (const id of ["gateway", "ibkr", "router", "isp"]) cards.get(id)?.update(asTeam(sysOf(w, id)));
@@ -413,25 +481,22 @@ function build(stage: Stage, world: World) {
     lineIspIbkr.set(w.net.ispInternet);
     router.set(w.net.aiRouter);
     isp.set(w.net.routerIsp === "ok" ? "ok" : w.net.routerIsp);
-    teamFlows.forEach((f) => f.setState(w.links.teamEngine));
-    linkDataGw.setState(w.links.dataGateway);
-    linkTradeGw.setState(w.links.tradingGateway);
-    linkPortGw.setState(w.links.portfolioGateway);
-    linkGwIbkr.setState(w.links.gatewayIbkr);
+    linkDataGw.set(asLine(w.links.dataGateway));
+    linkGwIbkr.set(asLine(w.links.gatewayIbkr));
+    cycling = w.brain.marketOpen && w.brain.gatewayUp;
     gw.setUp(w.brain.gatewayUp);
     ib.setUp(!w.brain.gatewayUp ? null : w.links.gatewayIbkr === "down" ? false : true);
-    supFlow.setState(supBusy ? "active" : "idle");
     speed = w.brain.marketOpen ? 1 : 0.35;
   };
   apply(world);
 
-  const off = stage.onTick((_dt, t) => {
+  const off = stage.onTick((dt, t) => {
     brain.tick(t, supBusy ? 1.6 : speed);
     const pulse = 0.5 + 0.5 * Math.sin(t * (supBusy ? 4 : 1.6)); // the ring breathes
     ringCoreMat.opacity = 0.4 + 0.25 * pulse;
     ringHaloMat.opacity = 0.1 + 0.12 * pulse;
     ringOuterMat.opacity = 0.03 + 0.06 * pulse;
-    for (const f of [...teamFlows, linkDataGw, linkTradeGw, linkPortGw, linkGwIbkr, supFlow]) f.tick(t);
+    tasks.tick(dt);
     blocks.forEach((b) => b.tick(t));
     gw.tick(t);
     isp.tick(t);
@@ -453,6 +518,7 @@ function build(stage: Stage, world: World) {
       blocks.forEach((b, k) => b.setHighlight(k === id || k === sel));
       cards.forEach((c, k) => c.el.classList.toggle("hover", k === id));
     },
+    taskBurst(ids: string[]) { tasks.burst(ids); },
     setBusy(busy: boolean) {
       supBusy = busy;
       supBlock.update(supTeam(busy));
@@ -467,6 +533,6 @@ export default function CommandCenter(p: ConceptProps) {
     background: "#0a0f1e", fog: { color: "#0a0f1e", near: 40, far: 95 }, toneMapping: true,
     camera: { position: [0, 28, 56], target: [0, 5.8, 0.5], fov: 34 },
     limits: { minDistance: 6, maxDistance: 70, maxPolarAngle: Math.PI * 0.42 },
-  }), p.world, p.selected, p.onSelect, p.onHover, p.busy);
+  }), p.world, p.selected, p.onSelect, p.onHover, p.busy, p.burst);
   return <div ref={ref} className="scene3d theme-cc" />;
 }

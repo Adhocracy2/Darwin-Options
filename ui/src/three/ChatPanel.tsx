@@ -37,7 +37,9 @@ function Rich({ text }: { text: string }) {
   })}</>;
 }
 
-export function ChatPanel({ onClose, onBusy }: { onClose: () => void; onBusy: (b: boolean) => void }) {
+export function ChatPanel({ onClose, onBusy, onTools }: {
+  onClose: () => void; onBusy: (b: boolean) => void; onTools?: (tools: string[]) => void;
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>(load);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,6 +63,7 @@ export function ChatPanel({ onClose, onBusy }: { onClose: () => void; onBusy: (b
     try {
       const r = await api.supervisorChat(next);
       setMessages([...next, { role: "assistant", content: r.reply, tools: r.tools_used }]);
+      onTools?.(r.tools_used);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setMessages(messages); // put the question back so it can be resent

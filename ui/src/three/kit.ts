@@ -170,7 +170,8 @@ export function makeTeamBlock(team: Team, opts: {
     update,
     tick: (t) => desks.forEach((x) => x.tick(t)),
     setHighlight(on) {
-      g.position.y = on ? 0.12 : 0;
+      g.userData.baseY ??= g.position.y; // lift relative to where it was placed (top-ring platforms float)
+      g.position.y = g.userData.baseY + (on ? 0.12 : 0);
       if (edgeMat) edgeMat.opacity = on ? 1 : 0.9;
     },
   };

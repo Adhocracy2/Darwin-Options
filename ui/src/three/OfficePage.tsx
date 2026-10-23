@@ -6,7 +6,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import type { Candidate, Event, Performance, Position, RiskState, Status } from "../api";
 import { api } from "../api";
 import { ChatPanel } from "./ChatPanel";
-import { FLOW_IN, FLOW_OUT } from "./kit";
 import { ago, buildWorld, STATE_COLOR, STATE_LABEL, type AgentState, type SystemInfo, type Team } from "./teams";
 import "./concepts.css";
 
@@ -67,6 +66,17 @@ export default function OfficePage() {
   const all: (Team | SystemInfo)[] = [...world.teams, ...world.systems];
   const picked = selected && selected !== "supervisor" ? all.find((t) => t.id === selected) ?? null : null;
   const onBusy = useCallback((b: boolean) => setBusy(b), []);
+  // the Supervisor's lookups, as the teams whose work it read (shown as task flows to them)
+  const [burst, setBurst] = useState<{ ids: string[]; n: number } | null>(null);
+  const onTools = useCallback((tools: string[]) => {
+    const TEAMS: Record<string, string[]> = {
+      get_overview: ["data", "scanner", "risk", "portfolio"], get_positions: ["portfolio"], get_position_detail: ["portfolio", "exits"],
+      get_last_scan: ["scanner", "risk"], get_recent_events: ["trading", "exits"], get_risk: ["risk"], get_settings: ["scanner"],
+      get_market_data: ["data"],
+    };
+    const ids = [...new Set(tools.flatMap((t) => TEAMS[t] ?? []))];
+    if (ids.length) setBurst((b) => ({ ids, n: (b?.n ?? 0) + 1 }));
+  }, []);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(null); };
@@ -104,16 +114,16 @@ export default function OfficePage() {
       <div className="c3-stage">
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
-            <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} />
+            <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />
           </Suspense>
         ) : <div className="c3-loading">{data.error ? "Couldn't reach the dashboard API." : "Loading data…"}</div>}
-        {selected === "supervisor" && <ChatPanel onClose={() => setSelected(null)} onBusy={onBusy} />}
+        {selected === "supervisor" && <ChatPanel onClose={() => setSelected(null)} onBusy={onBusy} onTools={onTools} />}
         {picked && <Details team={picked} onClose={() => setSelected(null)} />}
         <div className="c3-legend">
           {(Object.keys(STATE_COLOR) as AgentState[]).map((s) => <span key={s}><i style={{ background: STATE_COLOR[s] }} />{STATE_LABEL[s]}</span>)}
           <span className="c3-sep" />
-          <span><i style={{ background: FLOW_OUT }} />Requests &amp; orders out</span>
-          <span><i style={{ background: FLOW_IN }} />Prices, fills &amp; results back</span>
+          <span><i className="task" />Task: engine → team (team colour)</span>
+          <span><i className="task done" />Done: back to the engine</span>
           <span><i className="line-down" />Link down</span>
           <span><i className="line-ok" />Network OK</span>
           <span className="c3-hint">Drag to rotate · scroll to zoom · click anything · Esc to reset</span>
