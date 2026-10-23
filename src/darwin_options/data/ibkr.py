@@ -20,7 +20,7 @@ import math
 import time
 from datetime import date, datetime, timezone
 
-from ..broker.base import NY
+from ..broker.base import NY, us_market_open
 from ..ibkr import IBSession, num, parse_expiry
 from ..models import Chain, OptionContract, OptionQuote, Right
 from .. import pricing
@@ -35,11 +35,6 @@ CLOSES_CACHE_S = 3600  # restart a stream with no update for this long during ma
 
 def _price(t) -> float | None:
     return num(t.marketPrice()) or num(t.last) or num(t.close)
-
-
-def _market_open() -> bool:
-    now = datetime.now(NY)
-    return now.weekday() < 5 and (9, 30) <= (now.hour, now.minute) < (16, 0)
 
 
 def ticker_to_quote(contract: OptionContract, t) -> OptionQuote | None:
@@ -106,7 +101,7 @@ class IBKRMarketData:
         return self.s.call(go)
 
     def _stale(self, t) -> bool:
-        if t.time is None or not _market_open():
+        if t.time is None or not us_market_open():
             return False
         return (datetime.now(timezone.utc) - t.time).total_seconds() > STREAM_STALE_S
 

@@ -188,3 +188,4 @@ button.link:disabled { opacity: 0.5; cursor: not-allowed; }
 .outlook-bar .te, .outlook-legend .te { background: var(--series-1); }
 .outlook-bar .th, .outlook-legend .th { background: var(--warning); }
 .outlook-bar .sl, .outlook-legend .sl { background: var(--critical); }
+.warn-text { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--text-primary); padding: 1px 5px; border-radius: 4px; }

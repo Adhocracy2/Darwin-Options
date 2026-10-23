@@ -225,19 +225,33 @@ class ReplayMarketData:
         return out
 
 
-def last_quotes(path: str, symbols: list[str]) -> dict[str, tuple[str, OptionQuote]]:
-    """Newest recorded quote with a price for each symbol, however old: symbol -> (UTC time, quote).
-    Used when IBKR has no live quote, e.g. outside market hours."""
+def last_quotes(path: str, symbols: list[str], max_age_s: float | None = None) -> dict[str, tuple[str, OptionQuote]]:
+    """Newest recorded quote with a price for each symbol: symbol -> (UTC time, quote).
+    Only quotes from the last `max_age_s` seconds if given, otherwise however old."""
     if not symbols or not Path(path).exists():
         return {}
+    since = _ts(datetime.now(timezone.utc) - timedelta(seconds=max_age_s)) if max_age_s is not None else ""
     db = sqlite3.connect(path, timeout=30)
     out = {}
     for sym in symbols:
-        row = db.execute("SELECT * FROM quotes WHERE symbol=? AND ask > 0 ORDER BY ts DESC LIMIT 1", (sym,)).fetchone()
+        row = db.execute("SELECT * FROM quotes WHERE symbol=? AND ask > 0 AND ts >= ? ORDER BY ts DESC LIMIT 1",
+                         (sym, since)).fetchone()
         if row:
             out[sym] = (row[0], _quote(row))
     db.close()
     return out
+
+
+def last_spot(path: str, symbol: str, max_age_s: float | None = None) -> tuple[str, float] | None:
+    """Newest recorded stock price: (UTC time, price), optionally only from the last `max_age_s` seconds."""
+    if not Path(path).exists():
+        return None
+    since = _ts(datetime.now(timezone.utc) - timedelta(seconds=max_age_s)) if max_age_s is not None else ""
+    db = sqlite3.connect(path, timeout=30)
+    row = db.execute("SELECT ts, price FROM spots WHERE symbol=? AND ts >= ? ORDER BY ts DESC LIMIT 1",
+                     (symbol, since)).fetchone()
+    db.close()
+    return (row[0], row[1]) if row else None
 
 
 def summary(path: str) -> dict:

@@ -394,7 +394,7 @@ def test_stale_stream_restarts_during_market_hours(ib_engine, monkeypatch):
     eng, fake, md = ib_engine
     eng.md.spot("SPY")
     eng.md._streams["SPY"][1].time = datetime.now(timezone.utc) - timedelta(minutes=10)
-    monkeypatch.setattr(data_ibkr, "_market_open", lambda: True)
+    monkeypatch.setattr(data_ibkr, "us_market_open", lambda: True)
     fake.streams, fake.cancelled = [], []
     eng.md.spot("SPY")
     assert fake.cancelled == ["SPY"] and fake.streams == ["SPY"]

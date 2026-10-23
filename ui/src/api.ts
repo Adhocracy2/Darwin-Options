@@ -157,7 +157,7 @@ export type Payoff = {
   underlying?: string;
   example?: boolean;
   summary?: PositionSummary; // open positions only
-  quotes_from?: string | null; // UTC time of saved quotes used when IBKR had no live price
+  prices_at?: string | null; // UTC time of the oldest price used (saved or live)
 };
 export type SummaryLeg = { symbol: string; qty: number; strike: number; right: "C" | "P"; expiry: string; entry_price: number; mark: number | null };
 export type Outlook = {

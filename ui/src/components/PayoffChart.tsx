@@ -159,18 +159,24 @@ export function PayoffPanel({ load, height, refreshMs }: { load: () => Promise<P
   return (
     <>
       <PayoffChart p={p} height={height} />
-      {p.quotes_from && (
-        <p className="muted small payoff-source">
-          No live option prices right now (market closed?), so this uses the last saved prices
-          from {new Date(p.quotes_from).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}.
-        </p>
-      )}
       {p.summary && <TradeSummary s={p.summary} underlying={p.underlying ?? ""} />}
-      {refreshMs && at && (
+      {(p.prices_at || (refreshMs && at)) && (
         <p className="muted small payoff-source">
-          Updated {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{err ? ` · last refresh failed: ${err}` : ""}
+          {p.prices_at && <PricesAt ts={p.prices_at} />}
+          {refreshMs && at && <> · checked {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>}
+          {err ? ` · last refresh failed: ${err}` : ""}
         </p>
       )}
     </>
   );
+}
+
+/** "Prices from 10:42", with a warning when they're old (market closed, trader or gateway down). */
+function PricesAt({ ts }: { ts: string }) {
+  const t = new Date(ts);
+  const old = Date.now() - t.getTime() > 10 * 60_000;
+  const when = t.toLocaleString([], old ? { weekday: "short", hour: "2-digit", minute: "2-digit" } : { hour: "2-digit", minute: "2-digit" });
+  return old
+    ? <span className="warn-text">Prices from {when}: no newer prices (market closed, or the trader or IB Gateway is down)</span>
+    : <>Prices from {when}</>;
 }

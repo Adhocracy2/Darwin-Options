@@ -138,3 +138,41 @@ def test_outlook_follows_exit_rules():
     assert outlook([(short, -1), (long_, 1)], 143.0, 764.1, date(2026, 11, 27), 0.11, 0.04, ivs,
                    ManagementConfig(close_by_time="15:30")) is None
     print(o)
+
+
+def test_dashboard_prefers_fresh_saved_prices(engine, monkeypatch):
+    """Saved prices from the trader's last cycle are shown without asking IBKR; stale ones aren't."""
+    from datetime import datetime, timedelta, timezone
+    from darwin_options.models import OptionQuote
+    from darwin_options.recorder import Recorder
+    from darwin_options.api import app as app_mod
+    monkeypatch.setattr(app_mod, "us_market_open", lambda: True)
+    client = TestClient(create_app(engine.cfg, engine))
+    client.post("/api/run")
+    pos = client.get("/api/positions").json()[0]
+    syms = [l["symbol"] for l in pos["legs"]]
+    rec = Recorder(engine.cfg.record.path)
+    ts = lambda mins: (datetime.now(timezone.utc) - timedelta(minutes=mins)).isoformat(timespec="seconds")
+    for sym in syms:
+        rec.now = lambda: ts(1)
+        rec.quotes([OptionQuote(OptionContract.from_occ(sym), bid=9.0, ask=9.2, iv=0.2)])
+    asked = []
+    orig = engine.md.quotes
+    engine.md.quotes = lambda s: asked.append(s) or orig(s)
+    pp = client.get(f"/api/positions/{pos['id']}/payoff").json()
+    assert all(l["mark"] == pytest.approx(9.1) for l in pp["summary"]["legs"])
+    assert asked == [] and pp["prices_at"]
+    # older than dashboard_max_age_s: asks the market instead
+    engine.cfg.record.dashboard_max_age_s = 30
+    pp = client.get(f"/api/positions/{pos['id']}/payoff").json()
+    assert asked and all(l["mark"] != pytest.approx(9.1) for l in pp["summary"]["legs"])
+
+    # market closed: the last saved prices, however old, without asking
+    monkeypatch.setattr(app_mod, "us_market_open", lambda: False)
+    asked.clear()
+    for sym in syms:
+        rec.now = lambda: ts(600)
+        rec.quotes([OptionQuote(OptionContract.from_occ(sym), bid=7.0, ask=7.2, iv=0.2)])
+    engine.cfg.record.dashboard_max_age_s = 360
+    pp = client.get(f"/api/positions/{pos['id']}/payoff").json()
+    assert asked == []

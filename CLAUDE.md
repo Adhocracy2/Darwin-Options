@@ -130,7 +130,9 @@ deploys to AI1 once its runner is online, so only push tested work there.
   unanswered request raises `GatewayNotAnswering` and skips the rest of the cycle.
 - **Stock snapshots take ~11s on IBKR** (delayed data: it waits for fields that never arrive). `spot()` keeps one
   streaming subscription per ticker instead (restarted after a reconnect or 5 min of silence in market hours);
-  daily closes are cached for an hour. Payoff panels fall back to the last saved quotes when IBKR has none.
+  daily closes are cached for an hour. The dashboard reads prices from `var/marketdata.db` first (saved by
+  the trader each cycle; `record.dashboard_max_age_s`, any age when the market is closed) and asks IBKR only
+  when they're stale; it shows how old the prices are.
 - AI1 runs the **desktop IB Gateway** (~/Jts, logged in by hand, paper port 4002), not the Docker
   one in deploy/ib-gateway. Its auto-restart/log-off time and memory (-Xmx768m) matter.
 

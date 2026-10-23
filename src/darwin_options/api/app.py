@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..broker.base import us_market_open
 from ..config import Config, load_config
 from ..engine import Engine
 from ..factory import build_engine
@@ -42,7 +44,7 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         if p.status == "open":
             syms = [l.symbol for l in p.open_legs]
             try:
-                quotes = engine.md.quotes(syms)
+                quotes, d["prices_at"] = _prices(syms)
                 marks = {s: q.mid for s, q in quotes.items()}
                 d["marks"] = marks
                 d["unrealized_pnl"] = round(p.unrealized_pnl(marks), 2) if len(marks) == len(syms) else None
@@ -95,25 +97,53 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         contracts = [OptionContract.from_occ(s) for s, _ in legs]
         underlying = contracts[0].underlying
         today = engine.md.today()
-        spot = engine.md.spot(underlying)
-        quotes, quotes_from = _quotes_or_saved([c.symbol for c in contracts])
+        spot, spot_at = _spot(underlying)
+        quotes, quotes_at = _prices([c.symbol for c in contracts])
         ivs = payoff_mod.leg_ivs(contracts, quotes, spot, today, cfg.risk_free_rate)
         known = {i.id for i in strategy_instances(engine.cfg)}
         exit_dte = engine.cfg.management.for_strategy(strategy).close_at_dte if strategy in known else 0
         pl = [payoff_mod.PayoffLeg(c, q, ivs[c.symbol]) for c, (_, q) in zip(contracts, legs)]
         out = payoff_mod.payoff(pl, entry_credit, spot, today, cfg.risk_free_rate, exit_dte)
         out["underlying"] = underlying
-        out["quotes_from"] = quotes_from
+        out["prices_at"] = min((t for t in (spot_at, quotes_at) if t), default=None)
         return out
 
-    def _quotes_or_saved(symbols: list[str]):
-        """Live quotes, with the last saved ones for any leg IBKR has no price for (e.g. market
-        closed). Returns (quotes, UTC time of the oldest saved quote used, or None if all live)."""
-        quotes = engine.md.quotes(symbols)
-        missing = [s for s in symbols if s not in quotes]
-        saved = recorder.last_quotes(cfg.record.path, missing) if cfg.record.enabled else {}
-        quotes.update({s: q for s, (_, q) in saved.items()})
-        return quotes, min((ts for ts, _ in saved.values()), default=None)
+    # Prices for the dashboard: saved ones while fresh (the trader saves every cycle), IBKR when
+    # they're older, and the last saved ones if IBKR has none (market closed, gateway down).
+    # Each returns its value and the UTC time of the oldest price used.
+
+    def _now_ts() -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def _max_age():  # market closed: nothing newer is coming, so any saved price will do
+        return cfg.record.dashboard_max_age_s if us_market_open() else None
+
+    def _spot(symbol: str) -> tuple[float, str]:
+        rec = cfg.record
+        if rec.enabled and (hit := recorder.last_spot(rec.path, symbol, _max_age())):
+            return hit[1], hit[0]
+        try:
+            return engine.md.spot(symbol), _now_ts()
+        except (GatewayUnavailable, RuntimeError):
+            if rec.enabled and (hit := recorder.last_spot(rec.path, symbol)):
+                return hit[1], hit[0]
+            raise
+
+    def _prices(symbols: list[str]) -> tuple[dict, str | None]:
+        rec = cfg.record
+        found = recorder.last_quotes(rec.path, symbols, _max_age()) if rec.enabled else {}
+        missing = [s for s in symbols if s not in found]
+        if missing:
+            try:
+                live = engine.md.quotes(missing)
+                found.update({s: (_now_ts(), q) for s, q in live.items()})
+            except GatewayUnavailable:
+                if not rec.enabled:
+                    raise
+            still = [s for s in missing if s not in found]
+            if still and rec.enabled:
+                found.update(recorder.last_quotes(rec.path, still))
+        return {s: q for s, (_, q) in found.items()}, min((t for t, _ in found.values()), default=None)
 
     @app.post("/api/payoff")
     def payoff_for_legs(body: dict = Body(...)):
@@ -156,7 +186,7 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         credit = -sum(l.qty * l.entry_price for l in p.open_legs) * MULTIPLIER + p.realized_pnl()
         out = _payoff(legs, credit, p.strategy)
         try:
-            quotes, _ = _quotes_or_saved([s for s, _ in legs])
+            quotes, _ = _prices([s for s, _ in legs])
             known = {i.id for i in strategy_instances(engine.cfg)}
             mgmt = engine.cfg.management.for_strategy(p.strategy if p.strategy in known else "")
             out["summary"] = payoff_mod.position_summary(

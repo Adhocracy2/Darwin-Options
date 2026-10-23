@@ -219,6 +219,9 @@ class RecordConfig:
     """Save every price received from IBKR to a separate database, for replays and history."""
     enabled: bool = True
     path: str = "var/marketdata.db"
+    # The dashboard shows saved prices up to this old (the trader saves every cycle) and only
+    # asks IBKR when they're older. Outside market hours it shows the last saved ones.
+    dashboard_max_age_s: int = 360
 
 
 @dataclass
