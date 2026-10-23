@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { Stage } from "../stage";
 import {
-  cardHtml, disposeGroup, makeBrain, makeCard, makeDesk, makeFlow, makeTeamBlock, roundedSlab,
+  cardHtml, disposeGroup, makeBrain, makeCard, makeFlow, makeTeamBlock, roundedSlab,
   type Palette, type TeamBlock,
 } from "../kit";
 import type { SystemInfo, Team, TeamId, World } from "../teams";
@@ -20,12 +20,15 @@ const PALETTE: Palette = {
 
 const HOME = { pos: new THREE.Vector3(9, 29, 35), target: new THREE.Vector3(7.5, 0, -0.8) };
 
-// Where each team sits on the ring (degrees, 0 = right, 90 = back). Market Data, Trading and
-// Portfolio face IB Gateway on the right; the rest follow the pipeline round the back.
-const ANGLE: Record<TeamId, number> = { data: 28, scanner: 80, risk: 132, review: 184, exits: 236, portfolio: 290, trading: 336 };
+// Where each platform sits on the ring (degrees, 0 = right, 90 = back): eight even slots. Market
+// Data, Trading and Portfolio face IB Gateway on the right; the Supervisor sits at the back left.
+const ANGLE: Record<TeamId | "supervisor", number> = {
+  data: 22.5, scanner: 67.5, risk: 112.5, supervisor: 157.5, review: 202.5, exits: 247.5, portfolio: 292.5, trading: 337.5,
+};
+const ringPos = (deg: number) => new THREE.Vector3(Math.cos((deg * Math.PI) / 180) * 10.5, 0, -Math.sin((deg * Math.PI) / 180) * 7.5);
 const GATEWAY = new THREE.Vector3(19, 0, 0.8);
 const IBKR = new THREE.Vector3(27.5, 2.6, -7);
-const SUPERVISOR = new THREE.Vector3(0, 0, 2.05);
+const SUPERVISOR = ringPos(ANGLE.supervisor);
 
 function gatewayBuilding() {
   const g = new THREE.Group();
@@ -125,8 +128,7 @@ function build(stage: Stage, world: World) {
 
   // ---- teams on the ring
   for (const team of world.teams) {
-    const a = (ANGLE[team.id] * Math.PI) / 180;
-    const c = new THREE.Vector3(Math.cos(a) * 10.5, 0, -Math.sin(a) * 7.5);
+    const c = ringPos(ANGLE[team.id]);
     centers.set(team.id, c);
     const block = makeTeamBlock(team, {
       palette: PALETTE,
@@ -154,7 +156,8 @@ function build(stage: Stage, world: World) {
   // ---- the engine
   const engine = new THREE.Group();
   engine.userData.teamId = "engine";
-  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.2, 48), new THREE.MeshStandardMaterial({ color: "#16203a", roughness: 0.7 }));
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.2, 48),
+    new THREE.MeshStandardMaterial({ color: "#5ad8ff", roughness: 0.3, transparent: true, opacity: 0.08, depthWrite: false }));
   plaza.position.y = -0.2;
   const ring = new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.03, 8, 96), new THREE.MeshBasicMaterial({ color: "#5ad8ff" }));
   ring.rotation.x = Math.PI / 2;
@@ -165,21 +168,25 @@ function build(stage: Stage, world: World) {
   root.add(engine);
   centers.set("engine", new THREE.Vector3(0, 0.5, 0));
 
-  // ---- the Supervisor: a desk on a podium at the front of the plaza, facing the engine
-  const sup = new THREE.Group();
-  sup.userData.teamId = "supervisor";
-  sup.position.copy(SUPERVISOR);
-  const podium = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.05, 0.16, 40), new THREE.MeshStandardMaterial({ color: "#2b2410", roughness: 0.5, metalness: 0.4 }));
-  podium.position.set(0, 0, 0.25);
-  const podiumRing = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.03, 8, 64), new THREE.MeshBasicMaterial({ color: "#ffd43b" }));
-  podiumRing.rotation.x = Math.PI / 2;
-  podiumRing.position.set(0, 0.09, 0.25);
-  const supDesk = makeDesk({ ...PALETTE, screen: "#ffe066" }, "#e8b923", 3);
-  supDesk.group.position.y = 0.08;
-  sup.add(podium, podiumRing, supDesk.group);
-  root.add(sup);
+  // ---- the Supervisor: its own small platform on the ring, like the teams', with one desk
+  const supTeam = (busy: boolean): Team => ({
+    id: "supervisor" as TeamId, name: "Supervisor", job: "", color: "#868e96", rows: [], // gray platform
+    headline: { value: "", label: "" }, agents: [{ name: "Supervisor", role: "", state: busy ? "waiting" : "working" }],
+  });
+  const supBlock = makeTeamBlock(supTeam(false), {
+    palette: { ...PALETTE, screen: "#ffe066" },
+    floor: (col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.15, emissive: col, emissiveIntensity: 0.12 }),
+    shirt: () => "#ffd43b", // gold shirt so the Supervisor still stands out
+    edge: "#ffffff",
+    minSize: { w: 2.4, d: 2.2 },
+  });
+  supBlock.group.position.copy(SUPERVISOR);
+  supBlock.group.rotation.y = Math.PI / 4;
+  root.add(supBlock.group);
+  blocks.set("supervisor", supBlock);
   centers.set("supervisor", SUPERVISOR.clone().setY(0.6));
-  const supFlow = makeFlow(SUPERVISOR.clone().setY(1.3), new THREE.Vector3(0, 1.6, -0.3), { color: "#ffd43b", height: 1.4, dots: 2, lane: 0.1 });
+  road(SUPERVISOR.clone().multiplyScalar(2.6 / SUPERVISOR.length()), SUPERVISOR.clone().multiplyScalar(1 - 1.6 / SUPERVISOR.length()));
+  const supFlow = makeFlow(SUPERVISOR.clone().setY(1.4), new THREE.Vector3(0, 1.6, -0.3), { color: "#ffd43b", height: 3.2 });
   root.add(supFlow.group);
   let supBusy = false;
 
@@ -219,7 +226,7 @@ function build(stage: Stage, world: World) {
   sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, 5.6, 0)));
   const supCard = makeCard(asTeam(sysOf(world, "supervisor")), "cc-sup", stage,
     () => `<i></i><b>SUPERVISOR</b><span>Click to chat</span>`);
-  supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.2, 0.4));
+  supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.1, 0));
   root.add(supCard.obj);
   cards.set("supervisor", supCard);
 
@@ -239,16 +246,13 @@ function build(stage: Stage, world: World) {
     speed = w.brain.marketOpen ? 1 : 0.35;
   };
   apply(world);
-  supDesk.setState("working");
 
   const off = stage.onTick((_dt, t) => {
     brain.tick(t, supBusy ? 1.6 : speed);
     for (const f of [...teamFlows, linkDataGw, linkTradeGw, linkPortGw, linkGwIbkr, supFlow]) f.tick(t);
     blocks.forEach((b) => b.tick(t));
-    supDesk.tick(t);
     gw.tick(t);
     ib.tick(t);
-    podiumRing.scale.setScalar(supBusy ? 1 + 0.06 * Math.sin(t * 6) : 1);
   });
 
   stage.flyTo(HOME.pos, HOME.target);
@@ -268,7 +272,7 @@ function build(stage: Stage, world: World) {
     },
     setBusy(busy: boolean) {
       supBusy = busy;
-      supDesk.setState(busy ? "waiting" : "working");
+      supBlock.update(supTeam(busy));
       apply(current);
     },
     dispose() { off(); disposeGroup(root); },

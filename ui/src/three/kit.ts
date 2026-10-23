@@ -90,6 +90,7 @@ export function makeDesk(p: Palette, shirt: string, seed: number, shadows = fals
 
 /** Desk positions in facing pairs, rows of `perRow` pairs. Returns positions, rotations and floor size. */
 export function deskLayout(n: number, perRow = 0) {
+  if (n === 1) return { spots: [{ x: 0, z: -0.3, ry: 0 }], width: 1.9, depth: 1.9 }; // a single desk: compact floor
   const pairs = Math.ceil(n / 2);
   const cols = perRow || Math.max(1, Math.ceil(Math.sqrt(pairs * 1.6)));
   const rows = Math.ceil(pairs / cols);
@@ -139,11 +140,12 @@ export function makeTeamBlock(team: Team, opts: {
   edge?: string | null;
   shadows?: boolean;
   perRow?: number;
+  minSize?: { w: number; d: number }; // smallest floor (default 3.2 x 2.8)
 }): TeamBlock {
   const g = new THREE.Group();
   g.userData.teamId = team.id;
   const lay = deskLayout(team.agents.length, opts.perRow);
-  const w = Math.max(lay.width, 3.2), d = Math.max(lay.depth, 2.8);
+  const w = Math.max(lay.width, opts.minSize?.w ?? 3.2), d = Math.max(lay.depth, opts.minSize?.d ?? 2.8);
   const slab = roundedSlab(w, d, opts.thickness ?? 0.25, 0.35, opts.floor(team.color));
   slab.receiveShadow = !!opts.shadows;
   g.add(slab);
