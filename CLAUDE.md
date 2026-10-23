@@ -156,7 +156,13 @@ deploys to AI1 once its runner is online, so only push tested work there.
   (touch probability ≈ 2× delta). Lowering short delta to ~0.10–0.16 cut losses by more than half
   in simulation.
 
-## Suggested next steps (owner hasn't chosen yet)
+## The plan
+
+`docs/IMPROVEMENT_PLAN.md` (2026-10-23) is the agreed roadmap: foundations and a Decisions view, an honest
+(path-aware, calibrated) model, historical end-of-day option data for backtests, regime/event/volatility
+filters in shadow mode, then a champion/challenger self-improvement cycle. Work through it in order.
+
+## Earlier suggested next steps (folded into the plan)
 
 1. Make lower short delta (0.10–0.16) the default for credit spreads / iron condors.
 2. Path-aware EV: account for profit-target, stop and threatened exits in the model (it currently
