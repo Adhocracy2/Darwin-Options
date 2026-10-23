@@ -7,6 +7,7 @@ import type { Candidate, Event, Performance, Position, RiskState, Status } from 
 import { api } from "../api";
 import { ChatPanel } from "./ChatPanel";
 import { ago, buildWorld, STATE_COLOR, STATE_LABEL, type AgentState, type SystemInfo, type Team } from "./teams";
+import logoDark from "../assets/logo-dark.png";
 import "./concepts.css";
 
 const Office = lazy(() => import("./concepts/CommandCenter"));
@@ -112,6 +113,7 @@ export default function OfficePage() {
       </header>
 
       <div className="c3-stage">
+        <img className="c3-logo" src={logoDark} alt="Darwin Options" />
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
             <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />

@@ -21,7 +21,7 @@
 .c3-legend { position: absolute; left: 16px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 7px 12px; border-radius: 10px; background: var(--c3-bar); color: var(--c3-muted); font-size: 12px; border: 1px solid var(--c3-line); z-index: 2; }
 .c3-legend i, .c3-agents i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .c3-hint { opacity: 0.8; }
-.c3-tip { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
+.c3-tip { position: absolute; left: 50%; top: 104px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
 .c3-error { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--c3-bad); color: #fff; z-index: 2; }
 .c3-mobile { display: none; }
 @media (max-width: 899px) {
@@ -142,3 +142,6 @@
 /* a card behind the brain (from the current camera angle) fades out */
 .cc-card, .cc-sup { transition: opacity 0.2s; }
 .cc-card.behind, .cc-sup.behind { opacity: 0.12; pointer-events: none !important; }
+
+/* logo, top centre of the 3D office (always the dark version) */
+.c3-logo { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); height: 84px; width: auto; z-index: 2; pointer-events: none; }
