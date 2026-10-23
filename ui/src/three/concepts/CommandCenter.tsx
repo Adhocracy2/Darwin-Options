@@ -19,6 +19,8 @@ const PALETTE: Palette = {
 };
 
 const HOME = { pos: new THREE.Vector3(0, 30, 45), target: new THREE.Vector3(0, 5.2, 0.8) }; // centred on the circle
+// infrastructure shown: fly in to Technology and what it looks after (set once TECH is known, below)
+let SHOWN = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
 
 // Three layers of planes: the six teams that run every cycle on the floor (bottom ring), the
 // engine's circle floating above them (middle), and a top ring for Supervisor, Review and the
@@ -38,10 +40,19 @@ const posOf = (id: string) => {
 const BRAIN_Y = 4.4; // the brain floats this high above the circle, clear of the figures on its face
 // Outside systems, drawn small just beyond the ring on the right (SYS = their scale).
 const SYS = 0.55;
-const GATEWAY = new THREE.Vector3(16.2, 0, 0.6);
-const IBKR = new THREE.Vector3(20.2, 1.6, -4.6);
-const ROUTER = new THREE.Vector3(18.2, 0, 4.4);
-const ISP = new THREE.Vector3(21.4, 0, 1.4);
+// The infrastructure the Technology team looks after sits just beyond its platform (further out from
+// the brain), hidden until the + on the platform is clicked.
+const TECH = posOf("technology");
+const OUT = new THREE.Vector3(TECH.x, 0, TECH.z).normalize(); // away from the brain
+const SIDE = new THREE.Vector3(-OUT.z, 0, OUT.x); // across
+const GATEWAY = TECH.clone().addScaledVector(OUT, 5.5);
+const ROUTER = TECH.clone().addScaledVector(OUT, 7).addScaledVector(SIDE, 4.6);
+const ISP = TECH.clone().addScaledVector(OUT, 10.5).addScaledVector(SIDE, 4.2);
+const IBKR = TECH.clone().addScaledVector(OUT, 12.5).addScaledVector(SIDE, -1.2).add(new THREE.Vector3(0, 0.4, 0));
+{
+  const target = TECH.clone().addScaledVector(OUT, 6).addScaledVector(SIDE, 1.5);
+  SHOWN = { target, pos: target.clone().add(new THREE.Vector3(3, 14, 22)) };
+}
 const LINE: Record<LineState, string> = { ok: "#51cf66", down: "#ff6b6b", unknown: "#5c677d" };
 const SUPERVISOR = posOf("supervisor");
 const PLAZA_R = 4.2; // radius of the engine's circle
@@ -272,13 +283,6 @@ function build(stage: Stage, world: World) {
     return curve;
   };
   const linkCurves = new Map<string, THREE.CubicBezierCurve3>();
-  const roadMat = new THREE.MeshStandardMaterial({ color: "#1b2540", roughness: 0.9 });
-  const road = (from: THREE.Vector3, to: THREE.Vector3, width = 1.1) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(width, 0.04, from.distanceTo(to)), roadMat);
-    m.position.copy(from.clone().lerp(to, 0.5)).setY(-0.27);
-    m.lookAt(to.clone().setY(-0.27));
-    root.add(m);
-  };
 
   const blocks = new Map<string, TeamBlock>();
   const cards = new Map<string, ReturnType<typeof makeCard>>();
@@ -293,6 +297,7 @@ function build(stage: Stage, world: World) {
       floor: (col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.1, emissive: col, emissiveIntensity: 0.18 }),
       shirt: (col, j) => new THREE.Color(col).lerp(new THREE.Color(j % 2 ? "#ffffff" : "#1a1a1a"), 0.35).getStyle(),
       edge: "#ffffff",
+      minSize: team.id === "technology" ? { w: 3.6, d: 4.9 } : undefined, // room for the IBKR status strip
     });
     block.group.position.copy(c);
     block.group.rotation.y = Math.PI / 4;
@@ -305,12 +310,64 @@ function build(stage: Stage, world: World) {
     const out = c.clone().normalize();
     // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
     // so nothing covers the middle (the engine and its summary)
-    if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
+    if (team.id === "technology") card.obj.position.copy(c).addScaledVector(OUT, 0.8).add(new THREE.Vector3(0, 2.9, 0)); // above: clear of its status strip
+    else if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
     else if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
     else card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.6, 0, -1.2)); // beside, at floor level, clear of the circle
     root.add(card.obj);
     cards.set(team.id, card);
   }
+
+  // ---- Technology platform: IBKR link status written on its floor, with a + that shows the infrastructure
+  const techBlock = blocks.get("technology");
+  const techCanvas = document.createElement("canvas");
+  techCanvas.width = 1024; techCanvas.height = 256;
+  const techTex = new THREE.CanvasTexture(techCanvas);
+  techTex.colorSpace = THREE.SRGBColorSpace;
+  const techStrip = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 0.82),
+    new THREE.MeshBasicMaterial({ map: techTex, transparent: true, depthWrite: false, toneMapped: false }));
+  techStrip.rotation.x = -Math.PI / 2;
+  techStrip.position.set(0, 0.06, (techBlock?.size.d ?? 4.9) / 2 - 0.55); // along the front edge, just above the floor
+  techStrip.userData.teamId = "tech-toggle";
+  techBlock?.group.add(techStrip);
+  let infraShown = false;
+  const renderTech = (w: World) => {
+    const g = techCanvas.getContext("2d")!;
+    g.clearRect(0, 0, 1024, 256);
+    const gwUp = w.brain.gatewayUp, link = w.links.gatewayIbkr;
+    const [label, col] = !gwUp ? ["IB GATEWAY OFFLINE", "#ff8787"] : link === "down" ? ["IBKR LINK LOST", "#ff8787"]
+      : link === "warn" ? ["IBKR DATA FARM DOWN", "#fcc419"] : ["IBKR LINKED", "#69db7c"];
+    g.textBaseline = "middle";
+    g.font = "800 92px system-ui, sans-serif";
+    g.fillStyle = col;
+    g.shadowColor = col;
+    g.shadowBlur = 24;
+    g.fillText(label, 40, 132);
+    // the toggle: + to show the infrastructure, − to hide it
+    g.shadowColor = "#5ad8ff";
+    g.shadowBlur = 18;
+    g.strokeStyle = "#5ad8ff";
+    g.lineWidth = 10;
+    g.beginPath(); g.arc(912, 128, 78, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = "#e7ecf5";
+    g.save();
+    g.translate(912, 128);
+    g.rotate(Math.PI / 4); // the platform is turned 45°: turn the sign back so it reads as + / − from the front
+    g.fillRect(-50, -7, 100, 14);
+    if (!infraShown) g.fillRect(-7, -50, 14, 100);
+    g.restore();
+    techTex.needsUpdate = true;
+  };
+  const setInfra = (show: boolean) => {
+    infraShown = show;
+    infra.visible = show;
+    for (const id of ["gateway", "ibkr", "router", "isp"]) { const c = cards.get(id); if (c) c.obj.visible = show; }
+    renderTech(current);
+    if (show) stage.flyTo(SHOWN.pos, SHOWN.target); // ease back to fit the infrastructure in
+    else stage.flyTo(HOME.pos, HOME.target);
+  };
+  const pick = stage.onPick;
+  stage.onPick = (id) => (id === "tech-toggle" ? setInfra(!infraShown) : pick(id));
 
   // ---- the engine
   const engine = new THREE.Group();
@@ -365,7 +422,7 @@ function build(stage: Stage, world: World) {
     g.textAlign = "center";
     g.textBaseline = "middle";
     const total = m.realized + m.unrealized;
-    text(g, "FORECAST", 512, 420, "700 46px system-ui, sans-serif", "#8fd3ff", "rgba(90,216,255,0.9)", 18);
+    text(g, "FORECAST P&L", 512, 420, "700 46px system-ui, sans-serif", "#8fd3ff", "rgba(90,216,255,0.9)", 18);
     text(g, money(total), 512, 535, "800 150px system-ui, sans-serif", colour(total), colour(total), 30);
     // round the inside edge, clockwise from the top left (canvas top = far side of the circle)
     const cells: [string, string, string, number][] = [
@@ -404,39 +461,33 @@ function build(stage: Stage, world: World) {
   centers.set("supervisor", SUPERVISOR.clone().setY(SUPERVISOR.y + 0.6));
   let supBusy = false;
 
-  // ---- IB Gateway (on AI1) and IBKR (their servers)
+  // ---- infrastructure (hidden until the + on the Technology platform is clicked)
+  const infra = new THREE.Group();
+  infra.visible = false;
+  root.add(infra);
   const gw = gatewayBuilding();
   gw.group.position.copy(GATEWAY);
   gw.group.scale.setScalar(SYS);
   gw.group.userData.teamId = "gateway";
-  gw.group.rotation.y = -Math.PI / 2 + 0.25;
-  root.add(gw.group);
-  centers.set("gateway", GATEWAY.clone().setY(0.6));
-  road(new THREE.Vector3(13.3, 0, 0.5), GATEWAY.clone().add(new THREE.Vector3(-1.3, 0, 0)), 1.0);
+  gw.group.rotation.y = Math.atan2(-OUT.x, -OUT.z); // front faces the Technology platform
+  infra.add(gw.group);
+  centers.set("gateway", GATEWAY.clone().add(new THREE.Vector3(0, 0.6, 0)));
 
   const ib = ibkrIsland();
   ib.group.position.copy(IBKR);
   ib.group.scale.setScalar(SYS);
   ib.group.userData.teamId = "ibkr";
   ib.group.rotation.y = -0.35;
-  root.add(ib.group);
+  infra.add(ib.group);
   centers.set("ibkr", IBKR.clone());
 
   const at = (id: string) => centers.get(id)!.clone();
   // connections to IB Gateway and IBKR: plain status lines (green working, red down)
-  const linkDataGw = statusLine(at("data").setY(0.6), GATEWAY.clone().setY(0.9), 1.0);
-  const linkGwIbkr = statusLine(GATEWAY.clone().setY(1.7), IBKR.clone().setY(IBKR.y + 0.3), 1.2);
-  for (const l of [linkDataGw, linkGwIbkr]) root.add(l.group);
-  // Technology looks after the infrastructure: a dashed line from its platform down to IB Gateway
-  const techAt = centers.get("technology");
-  if (techAt) {
-    const a = techAt.clone().add(new THREE.Vector3(1.4, -0.2, 0.6)), b = GATEWAY.clone().setY(1.9);
-    const mid = a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, 1.5, 0));
-    const care = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(50)),
-      new THREE.LineDashedMaterial({ color: "#748ffc", dashSize: 0.3, gapSize: 0.22, transparent: true, opacity: 0.7 }));
-    care.computeLineDistances();
-    root.add(care);
-  }
+  // Technology platform -> IB Gateway (Darwin's connection), IB Gateway -> IBKR
+  const linkTechGw = statusLine(TECH.clone().addScaledVector(OUT, 2.2).add(new THREE.Vector3(0, 0.1, 0)),
+    GATEWAY.clone().add(new THREE.Vector3(0, 0.6, 0)), 0.5);
+  const linkGwIbkr = statusLine(GATEWAY.clone().add(new THREE.Vector3(0, 1.7, 0)), IBKR.clone().add(new THREE.Vector3(0, 0.3, 0)), 1.0);
+  for (const l of [linkTechGw, linkGwIbkr]) infra.add(l.group);
   const asLine = (st: string): LineState => (st === "down" ? "down" : st === "warn" ? "unknown" : "ok");
 
   // ---- home network: router and ISP, joined by plain status lines AI1 -> router -> ISP -> internet
@@ -445,18 +496,19 @@ function build(stage: Stage, world: World) {
   router.group.scale.setScalar(SYS * 1.2);
   router.group.rotation.y = -0.5;
   router.group.userData.teamId = "router";
-  root.add(router.group);
-  centers.set("router", ROUTER.clone().setY(0.3));
+  infra.add(router.group);
+  centers.set("router", ROUTER.clone().add(new THREE.Vector3(0, 0.3, 0)));
   const isp = ispTower();
   isp.group.position.copy(ISP);
   isp.group.scale.setScalar(SYS);
   isp.group.userData.teamId = "isp";
-  root.add(isp.group);
-  centers.set("isp", ISP.clone().setY(0.9));
-  const lineAiRouter = statusLine(GATEWAY.clone().add(new THREE.Vector3(0.7, 0.3, 0.7)), ROUTER.clone().setY(0.4), 0.7);
-  const lineRouterIsp = statusLine(ROUTER.clone().setY(0.4), ISP.clone().setY(0.3), 0.7);
-  const lineIspIbkr = statusLine(ISP.clone().setY(2.4), IBKR.clone().add(new THREE.Vector3(0.3, 0.2, 1.0)), 0.9);
-  for (const l of [lineAiRouter, lineRouterIsp, lineIspIbkr]) root.add(l.group);
+  infra.add(isp.group);
+  centers.set("isp", ISP.clone().add(new THREE.Vector3(0, 0.9, 0)));
+  const up = (v: THREE.Vector3, y: number) => v.clone().add(new THREE.Vector3(0, y, 0));
+  const lineAiRouter = statusLine(up(GATEWAY, 0.3), up(ROUTER, 0.4), 0.7);
+  const lineRouterIsp = statusLine(up(ROUTER, 0.4), up(ISP, 0.3), 0.7);
+  const lineIspIbkr = statusLine(up(ISP, 2.4), up(IBKR, 0.2), 0.9);
+  for (const l of [lineAiRouter, lineRouterIsp, lineIspIbkr]) infra.add(l.group);
 
   // cards for the outside systems take the same format as the teams'
   const asTeam = (s: SystemInfo) => s as unknown as Team;
@@ -464,14 +516,15 @@ function build(stage: Stage, world: World) {
   const sysCard = (id: string, pos: THREE.Vector3, rows = 3) => {
     const card = makeCard(asTeam(sysOf(world, id)), `cc-card sys mini sys-${id}`, stage, (t) => cardHtml(t, { rows }));
     card.obj.position.copy(pos);
-    root.add(card.obj);
+    card.obj.visible = false; // shown with the rest of the infrastructure
+    infra.add(card.obj);
     cards.set(id, card);
   };
   // small cards: name and status only; click for the full details
-  sysCard("gateway", GATEWAY.clone().add(new THREE.Vector3(0, 2.6, 0)), 0);
-  sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, 2.6, 0)), 0);
-  sysCard("router", ROUTER.clone().add(new THREE.Vector3(0, -0.2, 1.5)), 0);
-  sysCard("isp", ISP.clone().add(new THREE.Vector3(0, 3.2, 0)), 0);
+  sysCard("gateway", GATEWAY.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, -2.2), 0);
+  sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, -0.6, 0)).addScaledVector(SIDE, -2.4), 0);
+  sysCard("router", ROUTER.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, 1.8), 0);
+  sysCard("isp", ISP.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, 1.8), 0);
   const supCard = makeCard(asTeam(sysOf(world, "supervisor")), "cc-sup", stage,
     () => `<i></i><b>SUPERVISOR</b><span>Click to chat</span>`);
   supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.1, 0));
@@ -492,7 +545,8 @@ function build(stage: Stage, world: World) {
     lineIspIbkr.set(w.net.ispInternet);
     router.set(w.net.aiRouter);
     isp.set(w.net.routerIsp === "ok" ? "ok" : w.net.routerIsp);
-    linkDataGw.set(asLine(w.links.dataGateway));
+    linkTechGw.set(w.brain.gatewayUp ? "ok" : "down");
+    renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
     cycling = w.brain.marketOpen && w.brain.gatewayUp;
     gw.setUp(w.brain.gatewayUp);
@@ -563,7 +617,7 @@ function build(stage: Stage, world: World) {
       supBlock.update(supTeam(busy));
       apply(current);
     },
-    dispose() { off(); disposeGroup(root); },
+    dispose() { off(); stage.onPick = pick; disposeGroup(root); },
   };
 }
 

@@ -128,7 +128,11 @@ export default function OfficePage() {
           <span><i className="line-ok" />Network OK</span>
           <span className="c3-hint">Drag to rotate · scroll to zoom · click anything · Esc to reset</span>
         </div>
-        {hovered && !picked && selected !== "supervisor" && <div className="c3-tip">{all.find((t) => t.id === hovered)?.job}</div>}
+        {hovered && !picked && selected !== "supervisor" && (() => {
+          const tip = hovered === "tech-toggle" ? "Show or hide what Technology looks after: IB Gateway, the router, the ISP and IBKR"
+            : all.find((t) => t.id === hovered)?.job;
+          return tip ? <div className="c3-tip">{tip}</div> : null;
+        })()}
         {data.error && data.at && <div className="c3-error">{data.error}</div>}
         <div className="c3-mobile">The 3D office is built for desktop screens. A mobile version comes later.</div>
       </div>

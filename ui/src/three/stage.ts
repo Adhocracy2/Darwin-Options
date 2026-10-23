@@ -108,7 +108,14 @@ export class Stage {
     const r = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.pointer, this.camera);
+    // lines and dots only count when the click is right on them (the default 1 unit grabs clicks meant
+    // for things next to an outline, like the + on the Technology platform)
+    this.ray.params.Line = { threshold: 0.05 };
+    this.ray.params.Points = { threshold: 0.3 };
     for (const hit of this.ray.intersectObjects(this.scene.children, true)) {
+      let hidden = false; // hidden things (and anything inside a hidden group) can't be clicked
+      for (let p: THREE.Object3D | null = hit.object; p; p = p.parent) if (!p.visible) { hidden = true; break; }
+      if (hidden) continue;
       let o: THREE.Object3D | null = hit.object;
       while (o && o.userData.teamId == null) o = o.parent;
       if (o) return o.userData.teamId as string;
