@@ -215,6 +215,15 @@ class IBKRConfig:
 
 
 @dataclass
+class NetworkConfig:
+    """Dashboard check of the home network (see network.py): ping the internet, then the router."""
+    enabled: bool = True
+    internet_host: str = "google.com"
+    router_host: str = "auto"  # "auto" = AI1's default gateway
+    interval_s: int = 30
+
+
+@dataclass
 class RecordConfig:
     """Save every price received from IBKR to a separate database, for replays and history."""
     enabled: bool = True
@@ -253,6 +262,7 @@ class Config:
     ibkr: IBKRConfig = field(default_factory=IBKRConfig)
     rolling: RollingConfig = field(default_factory=RollingConfig)
     record: RecordConfig = field(default_factory=RecordConfig)
+    network: NetworkConfig = field(default_factory=NetworkConfig)
 
     def validate(self) -> None:
         if self.mode not in {"sim", "paper", "live"}:

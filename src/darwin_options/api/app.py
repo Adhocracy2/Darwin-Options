@@ -20,6 +20,7 @@ from ..manager import ExitAction
 from .. import analysis, pricing
 from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
+from ..network import NetworkMonitor
 from .. import recorder
 from ..report import performance
 from ..supervisor import Supervisor, SupervisorUnavailable
@@ -35,6 +36,9 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     cfg = cfg or load_config()
     engine = engine or build_engine(cfg)
     app = FastAPI(title="Darwin Options")
+    net = NetworkMonitor(cfg.network.internet_host, cfg.network.router_host, cfg.network.interval_s)
+    if cfg.network.enabled:
+        net.start()
 
     @app.exception_handler(GatewayUnavailable)
     def gateway_down(_req: Request, e: GatewayUnavailable):
@@ -65,7 +69,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
                 "account": account, "gateway": engine.gateway(), "universe": engine.cfg.universe,
                 "allow_new_entries": engine.cfg.allow_new_entries,
                 "strategies": [s.name for s in engine.strategies],
-                "activity": _activity()}
+                "activity": _activity(),
+                "network": net.snapshot() if cfg.network.enabled else None}
 
     def _activity() -> dict:
         """When prices and orders last moved through IB Gateway (for the 3D view's data flows)."""

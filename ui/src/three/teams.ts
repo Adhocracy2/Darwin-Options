@@ -52,12 +52,18 @@ export type Links = {
   gatewayIbkr: LinkState; // IB Gateway <-> IBKR's servers
 };
 
-export type SystemId = "engine" | "gateway" | "ibkr" | "supervisor";
+export type SystemId = "engine" | "gateway" | "ibkr" | "supervisor" | "router" | "isp";
+
+/** A plain status line (no traffic shown): working, broken, or not known. */
+export type LineState = "ok" | "down" | "unknown";
+
+/** AI1 -> router -> ISP -> internet (IBKR), from the dashboard's ping checks. */
+export type NetLines = { aiRouter: LineState; routerIsp: LineState; ispInternet: LineState };
 
 /** Things that aren't desk teams (no desks), shown in the same card and side panel format. */
 export type SystemInfo = Omit<Team, "id"> & { id: SystemId };
 
-export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links };
+export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links; net: NetLines };
 
 /** Last scan as a funnel: how many ideas reached each stage. */
 export type Flow = { scanned: number; passedChecks: number; ordered: number; topBlock: string | null };
@@ -237,7 +243,48 @@ export function buildWorld(d: Inputs): World {
     portfolioGateway: !gatewayUp ? "down" : marketOpen ? "active" : "idle",
     gatewayIbkr: !gatewayUp || ibkrUp === false ? "down" : broken.length ? "warn" : moving ? "active" : "idle",
   };
+  // ---- home network: ping google; if that fails, ping the router
+  const n = s?.network ?? null;
+  const net: NetLines = !n || n.checked_at == null
+    ? { aiRouter: "unknown", routerIsp: "unknown", ispInternet: "unknown" }
+    : n.internet ? { aiRouter: "ok", routerIsp: "ok", ispInternet: "ok" }
+    : n.router ? { aiRouter: "ok", routerIsp: "down", ispInternet: "unknown" }
+    : n.router === false ? { aiRouter: "down", routerIsp: "unknown", ispInternet: "unknown" }
+    : { aiRouter: "unknown", routerIsp: "down", ispInternet: "unknown" };
+  const ms = (v: number | null | undefined) => (v == null ? "–" : `${Math.round(v)} ms`);
+  const checked = n?.checked_at ? ago(n.checked_at) : n?.error ?? "not checked";
+
   const systems: SystemInfo[] = [
+    {
+      id: "router", name: "Router", color: "#adb5bd",
+      job: `Your home internet gateway${n?.router_host ? ` (${n.router_host})` : ""}. AI1 reaches everything through it.`,
+      agents: [],
+      headline: {
+        value: n?.router ? "Up" : n?.router === false ? "Down" : "Unknown",
+        label: n?.router === false ? "no answer from AI1" : n?.internet ? "internet answers too" : "",
+      },
+      rows: [
+        { label: "Address", value: n?.router_host ?? "–" },
+        { label: "Ping", value: n?.internet ? "skipped: internet OK" : ms(n?.router_ms) },
+        { label: "Checked", value: checked },
+      ],
+      alert: n?.router === false ? "Router not answering" : undefined,
+    },
+    {
+      id: "isp", name: "ISP / Internet", color: "#4dabf7",
+      job: "Your internet provider: the link from the router out to the internet (and IBKR).",
+      agents: [],
+      headline: {
+        value: n?.internet ? "Online" : n?.internet === false ? "Down" : "Unknown",
+        label: n?.internet ? `${n.internet_host} answers` : n?.internet === false ? `${n.internet_host} doesn't answer` : "",
+      },
+      rows: [
+        { label: "Test", value: n ? `ping ${n.internet_host}` : "–" },
+        { label: "Ping", value: ms(n?.internet_ms), tone: n?.internet ? "pos" : n?.internet === false ? "neg" : undefined },
+        { label: "Checked", value: checked },
+      ],
+      alert: n?.internet === false ? (n.router ? "Internet down (router OK)" : "No internet") : undefined,
+    },
     {
       id: "gateway", name: "IB Gateway", color: "#ced4da",
       job: "IBKR's desktop app on AI1 (port 4002). Every price and order goes through it.",
@@ -290,6 +337,7 @@ export function buildWorld(d: Inputs): World {
     teams,
     systems,
     links,
+    net,
     brain: {
       mode: s ? (s.mode === "live" ? "LIVE" : s.mode === "paper" ? "Paper" : "Sim") : "…",
       marketOpen, gatewayUp, entriesOn: !!s?.allow_new_entries,

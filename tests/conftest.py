@@ -15,6 +15,7 @@ TODAY = date(2026, 10, 21)
 def cfg(tmp_path):
     c = Config(mode="sim", data="synthetic", db_path=str(tmp_path / "t.db"), log_path=str(tmp_path / "t.log"))
     c.record.path = str(tmp_path / "marketdata.db")  # never write into the repo's var/
+    c.network.enabled = False  # no real pings from tests
     return c
 
 

@@ -90,6 +90,11 @@ export default function OfficePage() {
           <span className={link === "down" ? "bad" : link === "warn" ? "warn" : gw?.ibkr ? "ok" : ""}>
             {link === "down" && b.gatewayUp ? "IBKR link lost" : link === "warn" ? "IBKR farm down" : gw?.ibkr ? "IBKR linked" : "IBKR unknown"}
           </span>
+          {(() => {
+            const n = data.status?.network;
+            if (!n || n.checked_at == null) return null;
+            return <span className={n.internet ? "ok" : "bad"}>{n.internet ? "Internet OK" : n.router ? "Internet down" : "Router down"}</span>;
+          })()}
           <span>{b.mode}</span>
           <span>{b.marketOpen ? "Market open" : "Market closed"}</span>
           <span>Last scan {ago(b.lastScan)}</span>
@@ -110,6 +115,7 @@ export default function OfficePage() {
           <span><i style={{ background: FLOW_OUT }} />Requests &amp; orders out</span>
           <span><i style={{ background: FLOW_IN }} />Prices, fills &amp; results back</span>
           <span><i className="line-down" />Link down</span>
+          <span><i className="line-ok" />Network OK</span>
           <span className="c3-hint">Drag to rotate · scroll to zoom · click anything · Esc to reset</span>
         </div>
         {hovered && !picked && selected !== "supervisor" && <div className="c3-tip">{all.find((t) => t.id === hovered)?.job}</div>}

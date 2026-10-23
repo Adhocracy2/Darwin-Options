@@ -51,6 +51,10 @@ export type Status = {
   allow_new_entries: boolean;
   strategies: string[];
   activity?: { prices_at: string | null; orders_at: string | null };
+  network?: {
+    internet: boolean | null; router: boolean | null; internet_ms: number | null; router_ms: number | null;
+    internet_host: string; router_host: string | null; checked_at: string | null; error: string | null;
+  } | null;
 };
 
 export type ChatMessage = { role: "user" | "assistant"; content: string; tools?: string[] };

@@ -117,3 +117,6 @@
 .c-link:hover { background: rgba(255, 135, 135, 0.28); color: #fff; }
 .c3-link { display: inline-block; margin: 0 0 12px; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--c3-line); color: var(--c3-accent); text-decoration: none; font-weight: 600; }
 .c3-link:hover { border-color: var(--c3-accent); }
+.c3-legend i.line-ok { width: 14px; height: 3px; border-radius: 2px; background: #51cf66; vertical-align: 2px; }
+.cc-card.sys-router, .cc-card.sys-isp { width: 168px; padding: 8px 10px; }
+.cc-card.sys-router .c-big b, .cc-card.sys-isp .c-big b { font-size: 20px; }

@@ -87,6 +87,9 @@ renamed. Don't reintroduce "flick" names.
   the engine, the Supervisor desk (opens chat), IB Gateway and IBKR with two-way data flows (yellow out, cyan
   in, red = down) from `/api/status` (`gateway.ibkr`/`farms` from IB Gateway's 1100/1102/210x notices in
   `ibkr.IBSession`, `activity` = last saved price / last order).
+- `network.py`: the dashboard pings `network.internet_host` (google.com) every 30s; if that fails, the router
+  (`router_host: auto` = AI1's default gateway, 192.168.1.1 as of 2026-10-23). Shown in the 3D office as
+  router and ISP with plain green/red lines, and in `/api/status.network`.
 - `api/app.py`: FastAPI for the UI. `cli.py`: `darwin check|scan|run|loop|serve|positions|report|review|ibkr-check|close|data|replay`.
 
 ## Deploy (CI/CD)

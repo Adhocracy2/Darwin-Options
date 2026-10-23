@@ -7,6 +7,14 @@
 mode: paper
 data: ibkr                # ibkr | synthetic (offline testing, sim mode only)
 
+network:
+  # The 3D office shows whether the internet and the router are up: it pings internet_host, and if
+  # that fails, the router. "auto" uses this machine's default gateway (e.g. 192.168.1.1).
+  enabled: true
+  internet_host: google.com
+  router_host: auto
+  interval_s: 30
+
 record:
   # Save every price received from IBKR (stock prices, option bid/ask/IV/greeks) to a separate
   # database for `darwin replay` and history. Tens of MB per trading day. `darwin data` shows totals.
