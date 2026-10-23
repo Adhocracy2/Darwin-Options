@@ -2,10 +2,10 @@
 database, then derive daily closes and realized volatility for each day."""
 from __future__ import annotations
 
-import io
 import json
 import logging
 import sqlite3
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -49,12 +49,12 @@ def _members(path: Path) -> Iterator[tuple[str, Iterable[str]]]:
         except ImportError as e:
             raise RuntimeError(f"{path.name}: reading .7z needs the py7zr package (pip install py7zr), "
                                "or extract it first and import the .txt files") from e
-        with py7zr.SevenZipFile(path) as z:
-            names = sorted(n for n in z.getnames() if not n.endswith("/"))
-        for n in names:  # one member at a time keeps memory down
+        with tempfile.TemporaryDirectory(prefix="darwin-import-") as tmp:  # unpacked copy, deleted afterwards
             with py7zr.SevenZipFile(path) as z:
-                data = z.read([n])[n]
-            yield f"{path.name}/{n}", io.TextIOWrapper(data, encoding="utf-8", errors="replace")
+                z.extractall(path=tmp)
+            for f in sorted(p for p in Path(tmp).rglob("*") if p.is_file()):
+                with open(f, encoding="utf-8", errors="replace") as fh:
+                    yield f"{path.name}/{f.relative_to(tmp)}", fh
     else:
         with open(path, encoding="utf-8", errors="replace") as f:
             yield path.name, f

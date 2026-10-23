@@ -72,3 +72,14 @@ def test_rejects_other_files(tmp_path):
     f.write_text("a,b,c\n1,2,3\n")
     with pytest.raises(ValueError, match="not an OptionsDX file"):
         import_files([str(f)], str(tmp_path / "h.db"), SOURCES["optionsdx"]())
+
+
+def test_reads_7z_archives(tmp_path):
+    py7zr = pytest.importorskip("py7zr")
+    write_month(tmp_path / "spy_eod_202310.txt", [date(2023, 10, 2)], [date(2023, 11, 17)], [390, 400, 410])
+    arc = tmp_path / "spy_eod_2023q4.7z"
+    with py7zr.SevenZipFile(arc, "w") as z:
+        z.write(tmp_path / "spy_eod_202310.txt", "spy_eod_202310.txt")
+    (tmp_path / "spy_eod_202310.txt").unlink()
+    out = import_files([str(arc)], str(tmp_path / "h.db"), SOURCES["optionsdx"]())
+    assert out["files"] == 1 and out["quotes"] == 6
