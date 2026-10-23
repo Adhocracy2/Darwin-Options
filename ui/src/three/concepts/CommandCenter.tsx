@@ -501,7 +501,35 @@ function build(stage: Stage, world: World) {
   };
   apply(world);
 
+  // HTML cards always draw over the 3D scene. Fade a card when, from the current camera, it overlaps
+  // the brain on screen and is farther away than the brain (so the brain should hide it).
+  const brainCentre = new THREE.Vector3(), cardAt = new THREE.Vector3(), edge = new THREE.Vector3(), camUp = new THREE.Vector3();
+  const BRAIN_R = 1.6;
+  const occlude = () => {
+    const cam = stage.camera, box = stage.renderer.domElement.getBoundingClientRect();
+    const toScreen = (v: THREE.Vector3) => {
+      const q = v.clone().project(cam);
+      return { x: box.left + ((q.x + 1) / 2) * box.width, y: box.top + ((1 - q.y) / 2) * box.height };
+    };
+    brain.group.getWorldPosition(brainCentre);
+    camUp.set(0, 1, 0).applyQuaternion(cam.quaternion);
+    const c = toScreen(brainCentre), e = toScreen(edge.copy(brainCentre).addScaledVector(camUp, BRAIN_R));
+    const r = Math.hypot(e.x - c.x, e.y - c.y) * 0.9; // brain's radius on screen
+    const brainDist = cam.position.distanceTo(brainCentre);
+    cards.forEach((card) => {
+      card.obj.getWorldPosition(cardAt);
+      let behind = false;
+      if (cam.position.distanceTo(cardAt) > brainDist) {
+        const rc = card.el.getBoundingClientRect();
+        const nx = Math.max(rc.left, Math.min(c.x, rc.right)), ny = Math.max(rc.top, Math.min(c.y, rc.bottom));
+        behind = Math.hypot(nx - c.x, ny - c.y) < r; // the card's rectangle reaches into the brain's disc
+      }
+      if (card.el.classList.contains("behind") !== behind) card.el.classList.toggle("behind", behind);
+    });
+  };
+
   const off = stage.onTick((dt, t) => {
+    occlude();
     brain.tick(t, supBusy ? 1.6 : speed);
     const pulse = 0.5 + 0.5 * Math.sin(t * (supBusy ? 4 : 1.6)); // the ring breathes
     ringCoreMat.opacity = 0.4 + 0.25 * pulse;
