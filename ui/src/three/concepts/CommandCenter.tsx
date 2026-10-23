@@ -222,7 +222,15 @@ function build(stage: Stage, world: World) {
   const plaza = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.2, 48),
     new THREE.MeshStandardMaterial({ color: "#5ad8ff", roughness: 0.3, transparent: true, opacity: 0.08, depthWrite: false }));
   plaza.position.y = -0.2;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.03, 8, 96), new THREE.MeshBasicMaterial({ color: "#5ad8ff" }));
+  // the ring under the brain: a see-through core line inside two soft halos, all additive so it glows
+  const glowMat = (opacity: number) => new THREE.MeshBasicMaterial({
+    color: "#5ad8ff", transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const ringCoreMat = glowMat(0.55), ringHaloMat = glowMat(0.16), ringOuterMat = glowMat(0.06);
+  const ring = new THREE.Group();
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.03, 8, 128), ringCoreMat));
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.11, 10, 128), ringHaloMat));
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.26, 12, 128), ringOuterMat));
   ring.rotation.x = Math.PI / 2;
   ring.position.y = -0.09;
   const brain = makeBrain("#7ee3ff");
@@ -336,6 +344,10 @@ function build(stage: Stage, world: World) {
 
   const off = stage.onTick((_dt, t) => {
     brain.tick(t, supBusy ? 1.6 : speed);
+    const pulse = 0.5 + 0.5 * Math.sin(t * (supBusy ? 4 : 1.6)); // the ring breathes
+    ringCoreMat.opacity = 0.4 + 0.25 * pulse;
+    ringHaloMat.opacity = 0.1 + 0.12 * pulse;
+    ringOuterMat.opacity = 0.03 + 0.06 * pulse;
     for (const f of [...teamFlows, linkDataGw, linkTradeGw, linkPortGw, linkGwIbkr, supFlow]) f.tick(t);
     blocks.forEach((b) => b.tick(t));
     gw.tick(t);
