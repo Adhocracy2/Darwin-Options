@@ -18,7 +18,7 @@ const PALETTE: Palette = {
   chair: "#343a40", skin: ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#ffdbac"], roughness: 0.6,
 };
 
-const HOME = { pos: new THREE.Vector3(0, 28, 42), target: new THREE.Vector3(0, 5.5, 0.5) }; // centred on the circle
+const HOME = { pos: new THREE.Vector3(0, 30, 45), target: new THREE.Vector3(0, 5.2, 0.8) }; // centred on the circle
 
 // Three layers of planes: the six teams that run every cycle on the floor (bottom ring), the
 // engine's circle floating above them (middle), and a top ring for Supervisor, Review and the
@@ -30,7 +30,7 @@ const ANGLE: Record<TeamId | "supervisor", number> = {
   supervisor: 135, technology: 45, review: 225, news: 315, // Technology sits on the side facing the infrastructure
 };
 const TOP = new Set<string>(["supervisor", "review", "news", "technology"]);
-const BOTTOM_R = { x: 10.5, z: 7.5 }, TOP_R = { x: 8.5, z: 6 };
+const BOTTOM_R = { x: 9.8, z: 9.8 }, TOP_R = { x: 8, z: 8 }; // true circles, so the gaps between platforms are even
 const posOf = (id: string) => {
   const top = TOP.has(id), r = top ? TOP_R : BOTTOM_R, a = (ANGLE[id as TeamId] * Math.PI) / 180;
   return new THREE.Vector3(Math.cos(a) * r.x, top ? TOP_Y : 0, -Math.sin(a) * r.z);
@@ -183,8 +183,8 @@ const CYCLE = ["data", "scanner", "risk", "trading", "portfolio", "exits", "revi
 function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurve3>,
   blockOf: (id: string) => TeamBlock | undefined, cycling: () => boolean, supervising: () => boolean,
   colourOf: (id: string) => string) {
-  const geo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
-  const haloGeo = new THREE.SphereGeometry(0.85, 16, 12);
+  const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const haloGeo = new THREE.SphereGeometry(0.7, 16, 12);
   type Task = { id: string; t: number; phase: "out" | "wait" | "back"; mesh: THREE.Group; mat: THREE.MeshBasicMaterial; done?: () => void };
   const live: Task[] = [];
   const DUR = 1.1, WAIT = 0.5;
@@ -196,7 +196,7 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
       color: colourOf(id), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
     const g = new THREE.Group();
     g.add(new THREE.Mesh(geo, mat), halo);
-    g.position.copy(curves.get(id)!.getPointAt(0)).add(new THREE.Vector3(0, 0.6, 0)); // start at the engine, not the origin
+    g.position.copy(curves.get(id)!.getPointAt(0)); // start at the brain, not the origin
     root.add(g);
     live.push({ id, t: 0, phase: "out", mesh: g, mat, done });
   };
@@ -229,7 +229,7 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
           else { k.mesh.removeFromParent(); live.splice(i, 1); k.done?.(); continue; }
         }
         const u = k.phase === "out" ? k.t : k.phase === "wait" ? 1 : 1 - k.t;
-        k.mesh.position.copy(curve.getPointAt(u)).add(new THREE.Vector3(0, 0.6, 0));
+        k.mesh.position.copy(curve.getPointAt(u));
         k.mesh.rotation.y += dt * 3;
       }
     },
@@ -257,17 +257,18 @@ function build(stage: Stage, world: World) {
   root.add(grid);
   // thick curved blue links from the edge of the engine's circle to each platform: down to the
   // floor teams, up to the top teams
-  const linkMat = new THREE.MeshStandardMaterial({ color: "#2b3f7a", roughness: 0.6, emissive: "#1c2d63", emissiveIntensity: 0.6 });
-  const platformLink = (c: THREE.Vector3) => {
+  // dotted line from the brain to each platform, in the team's colour; tasks travel along it
+  const brainAt = new THREE.Vector3(0, MID_Y + BRAIN_Y, -0.3);
+  const platformLink = (c: THREE.Vector3, color: string) => {
     const dir = new THREE.Vector3(c.x, 0, c.z).normalize();
-    const start = dir.clone().multiplyScalar(PLAZA_R + 0.1).setY(MID_Y - 0.15);
-    const end = c.clone().sub(dir.clone().multiplyScalar(1.9)).setY(c.y - 0.12); // the platform's near edge
-    const up = c.y > MID_Y;
-    const curve = new THREE.CubicBezierCurve3(start, start.clone().add(dir.clone().multiplyScalar(2.2)),
-      end.clone().add(new THREE.Vector3(0, up ? -2.2 : 2.6, 0)).sub(dir.clone().multiplyScalar(0.6)), end);
-    const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.26, 10), linkMat);
-    m.scale.y = 1; // round tube reads as a thick line from any angle
-    root.add(m);
+    const end = c.clone().sub(dir.clone().multiplyScalar(1.0)).setY(c.y + 0.1); // onto the platform's inner half
+    const up = c.y > brainAt.y;
+    const curve = new THREE.CubicBezierCurve3(brainAt.clone(), brainAt.clone().add(dir.clone().multiplyScalar(3.5)),
+      end.clone().add(new THREE.Vector3(0, up ? 0.8 : 3.2, 0)), end);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(80)),
+      new THREE.LineDashedMaterial({ color, dashSize: 0.22, gapSize: 0.18, transparent: true, opacity: 0.85 }));
+    line.computeLineDistances();
+    root.add(line);
     return curve;
   };
   const linkCurves = new Map<string, THREE.CubicBezierCurve3>();
@@ -298,7 +299,7 @@ function build(stage: Stage, world: World) {
     root.add(block.group);
     blocks.set(team.id, block);
     const top = TOP.has(team.id);
-    linkCurves.set(team.id, platformLink(c));
+    linkCurves.set(team.id, platformLink(c, team.color));
 
     const card = makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1 })); // full details on click
     const out = c.clone().normalize();
@@ -396,7 +397,7 @@ function build(stage: Stage, world: World) {
     minSize: { w: 3.2, d: 3.6 }, // same size as the smaller team floors
   });
   supBlock.group.position.copy(SUPERVISOR);
-  linkCurves.set("supervisor", platformLink(SUPERVISOR));
+  linkCurves.set("supervisor", platformLink(SUPERVISOR, "#ffd43b"));
   supBlock.group.rotation.y = Math.PI / 4;
   root.add(supBlock.group);
   blocks.set("supervisor", supBlock);
