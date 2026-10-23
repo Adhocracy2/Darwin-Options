@@ -118,5 +118,20 @@
 .c3-link { display: inline-block; margin: 0 0 12px; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--c3-line); color: var(--c3-accent); text-decoration: none; font-weight: 600; }
 .c3-link:hover { border-color: var(--c3-accent); }
 .c3-legend i.line-ok { width: 14px; height: 3px; border-radius: 2px; background: #51cf66; vertical-align: 2px; }
-.cc-card.sys-router, .cc-card.sys-isp { width: 168px; padding: 8px 10px; }
-.cc-card.sys-router .c-big b, .cc-card.sys-isp .c-big b { font-size: 20px; }
+
+/* small cards for the outside systems: name and status only */
+.cc-card.mini { width: auto; min-width: 104px; padding: 6px 9px; border-radius: 8px; }
+.cc-card.mini .c-head { font-size: 10px; }
+.cc-card.mini .c-big { margin: 2px 0 0; }
+.cc-card.mini .c-big b { font-size: 15px; }
+.cc-card.mini .c-big span { display: none; }
+.cc-card.mini .c-alert { margin-top: 4px; padding: 2px 6px; font-size: 10px; }
+
+/* account summary on the engine's circle */
+.cc-hud { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 14px; padding: 7px 12px; border-radius: 10px;
+  background: rgba(8, 20, 40, 0.55); border: 1px solid rgba(90, 216, 255, 0.45); box-shadow: 0 0 18px rgba(90, 216, 255, 0.18);
+  color: #e7ecf5; pointer-events: none; backdrop-filter: blur(3px); }
+.cc-hud div { display: flex; flex-direction: column; align-items: center; min-width: 58px; }
+.cc-hud span { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #8fb8d8; }
+.cc-hud b { font-size: 14px; font-weight: 700; }
+.cc-hud b.pos { color: #69db7c; } .cc-hud b.neg { color: #ff8787; }

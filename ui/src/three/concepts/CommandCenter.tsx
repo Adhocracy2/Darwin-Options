@@ -4,6 +4,7 @@
  * IBKR's servers). Every link shows two-way traffic: yellow dots out, cyan dots back.
  */
 import * as THREE from "three";
+import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { Stage } from "../stage";
 import {
   cardHtml, disposeGroup, makeBrain, makeCard, makeFlow, makeTeamBlock, roundedSlab,
@@ -18,7 +19,7 @@ const PALETTE: Palette = {
   chair: "#343a40", skin: ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#ffdbac"], roughness: 0.6,
 };
 
-const HOME = { pos: new THREE.Vector3(12.5, 31, 38), target: new THREE.Vector3(10.5, 0, 0.3) };
+const HOME = { pos: new THREE.Vector3(2, 27, 31), target: new THREE.Vector3(2, 0, 1.2) }; // centred on the circle
 
 // Where each platform sits on the ring (degrees, 0 = right, 90 = back): eight even slots. Market
 // Data, Trading and Portfolio face IB Gateway on the right; the Supervisor sits at the back left.
@@ -26,10 +27,12 @@ const ANGLE: Record<TeamId | "supervisor", number> = {
   data: 22.5, scanner: 67.5, risk: 112.5, supervisor: 157.5, review: 202.5, exits: 247.5, portfolio: 292.5, trading: 337.5,
 };
 const ringPos = (deg: number) => new THREE.Vector3(Math.cos((deg * Math.PI) / 180) * 10.5, 0, -Math.sin((deg * Math.PI) / 180) * 7.5);
-const GATEWAY = new THREE.Vector3(19, 0, 0.8);
-const IBKR = new THREE.Vector3(27.5, 2.6, -7);
-const ROUTER = new THREE.Vector3(23, 0, 6);
-const ISP = new THREE.Vector3(29.5, 0, 1.2);
+// Outside systems, drawn small just beyond the ring on the right (SYS = their scale).
+const SYS = 0.55;
+const GATEWAY = new THREE.Vector3(16.2, 0, 0.6);
+const IBKR = new THREE.Vector3(20.2, 1.6, -4.6);
+const ROUTER = new THREE.Vector3(18.2, 0, 4.4);
+const ISP = new THREE.Vector3(21.4, 0, 1.4);
 const LINE: Record<LineState, string> = { ok: "#51cf66", down: "#ff6b6b", unknown: "#5c677d" };
 const SUPERVISOR = ringPos(ANGLE.supervisor);
 
@@ -92,7 +95,7 @@ function ibkrIsland() {
         const on = Math.sin(t * 3 + i * 1.7) > -0.2;
         m.color.set(up === false ? (on ? "#ff2020" : "#2a0a0a") : up === null ? "#868e96" : on ? "#ff8787" : "#5c1f1f");
       });
-      g.position.y = IBKR.y + Math.sin(t * 0.8) * 0.12; // it floats
+      g.position.y = IBKR.y + Math.sin(t * 0.8) * 0.08; // it floats
     },
   };
 }
@@ -211,7 +214,10 @@ function build(stage: Stage, world: World) {
 
     const card = makeCard(team, "cc-card", stage, (t) => cardHtml(t));
     const out = c.clone().normalize();
-    card.obj.position.copy(c).add(new THREE.Vector3(out.x * 1.5, 3.4, out.z * 1.2));
+    // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
+    // so nothing covers the middle (the engine and its summary)
+    if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
+    else card.obj.position.copy(c).add(new THREE.Vector3(out.x * 1.5, 3.4, out.z * 1.2));
     root.add(card.obj);
     cards.set(team.id, card);
   }
@@ -236,6 +242,21 @@ function build(stage: Stage, world: World) {
   const brain = makeBrain("#7ee3ff");
   brain.group.position.set(0, 1.7, -0.3);
   engine.add(plaza, ring, brain.group);
+  const hudEl = document.createElement("div");
+  hudEl.className = "cc-hud";
+  const hud = new CSS2DObject(hudEl);
+  hud.position.set(0, 0, 1.9); // on the circle, in front of the brain
+  engine.add(hud);
+  const money = (v: number) => `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  const pct = (v: number | null, signed = false) => v == null ? "–" : `${signed && v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`;
+  const tone = (v: number | null) => (v == null || Math.abs(v) < 1e-9 ? "" : v > 0 ? "pos" : "neg");
+  const renderHud = (w: World) => {
+    const m = w.summary;
+    const cell = (label: string, value: string, cls = "") => `<div><span>${label}</span><b class="${cls}">${value}</b></div>`;
+    hudEl.innerHTML = cell("Realised", money(m.realized), tone(m.realized)) + cell("Unrealised", money(m.unrealized), tone(m.unrealized))
+      + cell("Open", String(m.open)) + cell("%RPT", pct(m.riskPerTrade)) + cell("%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "neg" : "")
+      + cell("%Today", pct(m.today, true), tone(m.today));
+  };
   root.add(engine);
   centers.set("engine", new THREE.Vector3(0, 0.5, 0));
 
@@ -264,56 +285,61 @@ function build(stage: Stage, world: World) {
   // ---- IB Gateway (on AI1) and IBKR (their servers)
   const gw = gatewayBuilding();
   gw.group.position.copy(GATEWAY);
+  gw.group.scale.setScalar(SYS);
   gw.group.userData.teamId = "gateway";
   gw.group.rotation.y = -Math.PI / 2 + 0.25;
   root.add(gw.group);
-  centers.set("gateway", GATEWAY.clone().setY(1));
-  road(new THREE.Vector3(13.5, 0, 0.5), GATEWAY.clone().add(new THREE.Vector3(-2.2, 0, 0)), 1.6);
+  centers.set("gateway", GATEWAY.clone().setY(0.6));
+  road(new THREE.Vector3(13.3, 0, 0.5), GATEWAY.clone().add(new THREE.Vector3(-1.3, 0, 0)), 1.0);
 
   const ib = ibkrIsland();
   ib.group.position.copy(IBKR);
+  ib.group.scale.setScalar(SYS);
   ib.group.userData.teamId = "ibkr";
   ib.group.rotation.y = -0.35;
   root.add(ib.group);
   centers.set("ibkr", IBKR.clone());
 
   const at = (id: string) => centers.get(id)!.clone();
-  const linkDataGw = makeFlow(at("data").setY(1.3), GATEWAY.clone().setY(2.2), { color: "#22b8cf", height: 2.6 });
-  const linkTradeGw = makeFlow(at("trading").setY(1.3), GATEWAY.clone().setY(1.6), { color: "#fab005", height: 2.2 });
-  const linkPortGw = makeFlow(at("portfolio").setY(1.3), GATEWAY.clone().setY(1.0), { color: "#40c057", height: 2.8 });
-  const linkGwIbkr = makeFlow(GATEWAY.clone().setY(3.2), IBKR.clone().setY(IBKR.y + 0.6), { color: "#ff8787", height: 3.2, dots: 4, lane: 0.2 });
+  const linkDataGw = makeFlow(at("data").setY(1.3), GATEWAY.clone().setY(1.3), { color: "#22b8cf", height: 2.0 });
+  const linkTradeGw = makeFlow(at("trading").setY(1.3), GATEWAY.clone().setY(1.0), { color: "#fab005", height: 1.6 });
+  const linkPortGw = makeFlow(at("portfolio").setY(1.3), GATEWAY.clone().setY(0.6), { color: "#40c057", height: 2.2 });
+  const linkGwIbkr = makeFlow(GATEWAY.clone().setY(1.9), IBKR.clone().setY(IBKR.y + 0.35), { color: "#ff8787", height: 2.0, dots: 3, lane: 0.12 });
   for (const f of [linkDataGw, linkTradeGw, linkPortGw, linkGwIbkr]) root.add(f.group);
 
   // ---- home network: router and ISP, joined by plain status lines AI1 -> router -> ISP -> internet
   const router = routerBox();
   router.group.position.copy(ROUTER);
+  router.group.scale.setScalar(SYS * 1.2);
   router.group.rotation.y = -0.5;
   router.group.userData.teamId = "router";
   root.add(router.group);
-  centers.set("router", ROUTER.clone().setY(0.5));
+  centers.set("router", ROUTER.clone().setY(0.3));
   const isp = ispTower();
   isp.group.position.copy(ISP);
+  isp.group.scale.setScalar(SYS);
   isp.group.userData.teamId = "isp";
   root.add(isp.group);
-  centers.set("isp", ISP.clone().setY(1.5));
-  const lineAiRouter = statusLine(GATEWAY.clone().add(new THREE.Vector3(1.2, 0.4, 1.2)), ROUTER.clone().setY(0.6));
-  const lineRouterIsp = statusLine(ROUTER.clone().setY(0.6), ISP.clone().setY(0.4));
-  const lineIspIbkr = statusLine(ISP.clone().setY(4.2), IBKR.clone().add(new THREE.Vector3(0.5, 0.3, 1.8)), 1.5);
+  centers.set("isp", ISP.clone().setY(0.9));
+  const lineAiRouter = statusLine(GATEWAY.clone().add(new THREE.Vector3(0.7, 0.3, 0.7)), ROUTER.clone().setY(0.4), 0.7);
+  const lineRouterIsp = statusLine(ROUTER.clone().setY(0.4), ISP.clone().setY(0.3), 0.7);
+  const lineIspIbkr = statusLine(ISP.clone().setY(2.4), IBKR.clone().add(new THREE.Vector3(0.3, 0.2, 1.0)), 0.9);
   for (const l of [lineAiRouter, lineRouterIsp, lineIspIbkr]) root.add(l.group);
 
   // cards for the outside systems take the same format as the teams'
   const asTeam = (s: SystemInfo) => s as unknown as Team;
   const sysOf = (w: World, id: string) => w.systems.find((x) => x.id === id)!;
   const sysCard = (id: string, pos: THREE.Vector3, rows = 3) => {
-    const card = makeCard(asTeam(sysOf(world, id)), `cc-card sys sys-${id}`, stage, (t) => cardHtml(t, { rows }));
+    const card = makeCard(asTeam(sysOf(world, id)), `cc-card sys mini sys-${id}`, stage, (t) => cardHtml(t, { rows }));
     card.obj.position.copy(pos);
     root.add(card.obj);
     cards.set(id, card);
   };
-  sysCard("gateway", GATEWAY.clone().add(new THREE.Vector3(0.5, 5.6, 0)));
-  sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, 5.6, 0)));
-  sysCard("router", ROUTER.clone().add(new THREE.Vector3(0, -0.3, 2.6)), 1); // in front, so the router stays visible
-  sysCard("isp", ISP.clone().add(new THREE.Vector3(0, 5.4, 0)), 1);
+  // small cards: name and status only; click for the full details
+  sysCard("gateway", GATEWAY.clone().add(new THREE.Vector3(0, 2.6, 0)), 0);
+  sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, 2.6, 0)), 0);
+  sysCard("router", ROUTER.clone().add(new THREE.Vector3(0, -0.2, 1.5)), 0);
+  sysCard("isp", ISP.clone().add(new THREE.Vector3(0, 3.2, 0)), 0);
   const supCard = makeCard(asTeam(sysOf(world, "supervisor")), "cc-sup", stage,
     () => `<i></i><b>SUPERVISOR</b><span>Click to chat</span>`);
   supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.1, 0));
@@ -325,6 +351,7 @@ function build(stage: Stage, world: World) {
   const apply = (w: World) => {
     w.teams.forEach((t) => { blocks.get(t.id)?.update(t); cards.get(t.id)?.update(t); });
     for (const id of ["gateway", "ibkr", "router", "isp"]) cards.get(id)?.update(asTeam(sysOf(w, id)));
+    renderHud(w);
     lineAiRouter.set(w.net.aiRouter);
     lineRouterIsp.set(w.net.routerIsp);
     lineIspIbkr.set(w.net.ispInternet);
@@ -363,7 +390,7 @@ function build(stage: Stage, world: World) {
       sel = id;
       cards.forEach((c, k) => c.el.classList.toggle("selected", k === id));
       const c = id ? centers.get(id) : null;
-      if (c) stage.focus(c, id === "ibkr" || id === "gateway" || id === "isp" ? 15 : id === "router" ? 10 : 13);
+      if (c) stage.focus(c, ["ibkr", "gateway", "isp", "router"].includes(id!) ? 9 : 13);
       else stage.flyTo(HOME.pos, HOME.target);
     },
     hover(id: string | null) {
@@ -382,7 +409,7 @@ function build(stage: Stage, world: World) {
 export default function CommandCenter(p: ConceptProps) {
   const ref = useScene(build, (el) => new Stage(el, {
     background: "#0a0f1e", fog: { color: "#0a0f1e", near: 40, far: 95 }, toneMapping: true,
-    camera: { position: [14.5, 40, 49], target: [10.5, 0, 0.3], fov: 34 },
+    camera: { position: [2, 36, 42], target: [2, 0, 1.2], fov: 34 },
     limits: { minDistance: 6, maxDistance: 70, maxPolarAngle: Math.PI * 0.42 },
   }), p.world, p.selected, p.onSelect, p.onHover, p.busy);
   return <div ref={ref} className="scene3d theme-cc" />;

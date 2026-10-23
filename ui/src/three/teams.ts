@@ -63,7 +63,13 @@ export type NetLines = { aiRouter: LineState; routerIsp: LineState; ispInternet:
 /** Things that aren't desk teams (no desks), shown in the same card and side panel format. */
 export type SystemInfo = Omit<Team, "id"> & { id: SystemId };
 
-export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links; net: NetLines };
+/** Account summary shown on the engine's circle. Percentages are fractions (0.02 = 2%). */
+export type Summary = {
+  realized: number; unrealized: number; riskPerTrade: number | null; drawdown: number | null;
+  today: number | null; open: number;
+};
+
+export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links; net: NetLines; summary: Summary };
 
 /** Last scan as a funnel: how many ideas reached each stage. */
 export type Flow = { scanned: number; passedChecks: number; ordered: number; topBlock: string | null };
@@ -338,6 +344,11 @@ export function buildWorld(d: Inputs): World {
     systems,
     links,
     net,
+    summary: {
+      realized: d.perf?.overall.total_pnl ?? 0, unrealized: unreal,
+      riskPerTrade: d.risk?.risk_per_trade_pct ?? null, drawdown: d.risk?.drawdown ?? null,
+      today: d.risk?.day_change_pct ?? null, open: d.open.length,
+    },
     brain: {
       mode: s ? (s.mode === "live" ? "LIVE" : s.mode === "paper" ? "Paper" : "Sim") : "…",
       marketOpen, gatewayUp, entriesOn: !!s?.allow_new_entries,
