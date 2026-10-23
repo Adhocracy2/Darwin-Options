@@ -228,27 +228,61 @@ export function makeBrain(color: string, count = 1400, radius = 1.6) {
   };
 }
 
-/** Dotted arc from a to b with `dots` moving along it (data flowing). */
-export function makeFlow(a: THREE.Vector3, b: THREE.Vector3, opts: { color: string; height?: number; dots?: number; speed?: number; opacity?: number }) {
-  const mid = a.clone().lerp(b, 0.5);
-  mid.y += opts.height ?? 2.5;
-  const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-  const lineGeo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(60));
-  const line = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({
-    color: opts.color, dashSize: 0.12, gapSize: 0.14, transparent: true, opacity: opts.opacity ?? 0.55,
-  }));
-  line.computeLineDistances();
+/** Dot colours for data flows: out = requests and orders, in = prices, fills and results. */
+export const FLOW_OUT = "#ffd43b";
+export const FLOW_IN = "#66d9e8";
+const FLOW_DOWN = "#ff6b6b";
+const FLOW_WARN = "#fcc419";
+
+export type FlowState = "active" | "idle" | "warn" | "down";
+
+/**
+ * Two-way data link from a to b: a dotted arc per direction, side by side. Yellow dots travel
+ * a -> b (out), cyan dots b -> a (in). Busy links move fast, idle ones crawl, a down link turns
+ * red and stops.
+ */
+export function makeFlow(a: THREE.Vector3, b: THREE.Vector3, opts: { color: string; height?: number; dots?: number; lane?: number }) {
   const g = new THREE.Group();
-  g.add(line);
-  const dotGeo = new THREE.SphereGeometry(0.06, 8, 6);
-  const dotMat = new THREE.MeshBasicMaterial({ color: opts.color });
-  const dots = Array.from({ length: opts.dots ?? 3 }, () => { const m = new THREE.Mesh(dotGeo, dotMat); g.add(m); return m; });
-  let speed = opts.speed ?? 0.25;
+  const side = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(opts.lane ?? 0.14);
+  const arc = (from: THREE.Vector3, to: THREE.Vector3, off: THREE.Vector3) => {
+    const p0 = from.clone().add(off), p2 = to.clone().add(off);
+    const mid = p0.clone().lerp(p2, 0.5);
+    mid.y += opts.height ?? 2.5;
+    return new THREE.QuadraticBezierCurve3(p0, mid, p2);
+  };
+  const outCurve = arc(a, b, side), inCurve = arc(b, a, side.clone().negate());
+  const lineMat = new THREE.LineDashedMaterial({ color: opts.color, dashSize: 0.12, gapSize: 0.14, transparent: true, opacity: 0.5 });
+  for (const c of [outCurve, inCurve]) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.getPoints(60)), lineMat);
+    line.computeLineDistances();
+    g.add(line);
+  }
+  const dotGeo = new THREE.SphereGeometry(0.07, 8, 6);
+  const outMat = new THREE.MeshBasicMaterial({ color: FLOW_OUT });
+  const inMat = new THREE.MeshBasicMaterial({ color: FLOW_IN });
+  const n = opts.dots ?? 3;
+  const mk = (m: THREE.Material) => Array.from({ length: n }, () => { const d = new THREE.Mesh(dotGeo, m); g.add(d); return d; });
+  const outs = mk(outMat), ins = mk(inMat);
+  let speed = 0.22, shown = n, phase = 0, last = 0;
+  const apply = (st: FlowState) => {
+    lineMat.color.set(st === "down" ? FLOW_DOWN : st === "warn" ? FLOW_WARN : opts.color);
+    lineMat.opacity = st === "down" ? 0.85 : st === "idle" ? 0.28 : 0.55;
+    speed = st === "active" ? 0.22 : st === "warn" ? 0.08 : st === "idle" ? 0.05 : 0;
+    shown = st === "down" ? 0 : st === "idle" ? 1 : n;
+    [...outs, ...ins].forEach((d, i) => { d.visible = i % n < shown; });
+  };
+  apply("active");
   return {
     group: g,
-    setSpeed(s: number) { speed = s; },
+    setState: apply,
     tick(t: number) {
-      dots.forEach((d, i) => d.position.copy(curve.getPointAt((t * speed + i / dots.length) % 1)));
+      phase += (t - last) * speed; // integrate so speed changes don't make dots jump
+      last = t;
+      for (let i = 0; i < n; i++) {
+        const u = (phase + i / n) % 1;
+        outs[i].position.copy(outCurve.getPointAt(u));
+        ins[i].position.copy(inCurve.getPointAt((u + 0.5 / n) % 1));
+      }
     },
   };
 }

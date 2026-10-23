@@ -10,6 +10,7 @@ import asyncio
 import concurrent.futures
 import logging
 import math
+import re
 import threading
 import time
 from datetime import date, datetime
@@ -71,11 +72,36 @@ class IBSession:
         self._next_retry = 0.0
         self.loop = asyncio.new_event_loop()
         self._connect_lock = asyncio.Lock()  # used only on self.loop
+        self.link: dict = {"ibkr": None, "farms": {}, "changed_at": None}
         threading.Thread(target=self.loop.run_forever, name="ib-loop", daemon=True).start()
         try:  # connect now so config errors show up early
             self.call(lambda: asyncio.sleep(0))
         except GatewayUnavailable as e:
             log.warning("%s. Running without IBKR; retrying every %ss.", e, RETRY_S)
+
+    def _on_notice(self, _req_id, code, message, _contract=None) -> None:
+        """Track IB Gateway's own link to IBKR's servers and its data farms, from its notices.
+        1100 lost / 1101-1102 restored; 2104/2106/2158 a farm is OK, 2103/2105/2157 broken,
+        2107/2108 inactive (fine: it wakes up on demand)."""
+        now = time.time()
+        if code == 1100:
+            self.link.update(ibkr=False, changed_at=now)
+        elif code in (1101, 1102):
+            self.link.update(ibkr=True, changed_at=now)
+        elif code in (2103, 2104, 2105, 2106, 2107, 2108, 2157, 2158):
+            # the farm name ends the message, after ":" ("...is OK:usfarm") or "." ("...upon demand.apachmds")
+            m = re.search(r"[:.]\s*([A-Za-z0-9_-]+)\s*$", message)
+            farm = m.group(1) if m else str(code)
+            self.link["farms"][farm] = "broken" if code in (2103, 2105, 2157) else (
+                "inactive" if code in (2107, 2108) else "ok")
+            if code in (2104, 2106, 2158) and self.link["ibkr"] is None:
+                self.link["ibkr"] = True  # a farm answering means the server link is up
+
+    def link_status(self) -> dict:
+        """IB Gateway -> IBKR servers: True/False/None (unknown) plus each data farm's state."""
+        up = self.connected
+        return {"ibkr": self.link["ibkr"] if up else None, "farms": dict(self.link["farms"]) if up else {},
+                "changed_at": self.link["changed_at"]}
 
     @property
     def connected(self) -> bool:
@@ -85,6 +111,8 @@ class IBSession:
         from ib_async import IB
 
         self.ib = IB()
+        self.link = {"ibkr": None, "farms": {}, "changed_at": self.link["changed_at"]}
+        self.ib.errorEvent += self._on_notice  # before connecting: farm notices arrive during the handshake
         await self.ib.connectAsync(self.cfg.host, self.cfg.port, clientId=self.cfg.client_id,
                                    timeout=20, account=self.cfg.account)
         self.ib.reqMarketDataType(self.cfg.market_data_type)

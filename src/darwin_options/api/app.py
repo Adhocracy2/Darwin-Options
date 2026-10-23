@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +11,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..broker.base import us_market_open
+from ..broker.base import NY, us_market_open
 from ..config import Config, load_config
 from ..engine import Engine
 from ..factory import build_engine
@@ -21,6 +22,7 @@ from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
 from .. import recorder
 from ..report import performance
+from ..supervisor import Supervisor, SupervisorUnavailable
 from ..review import review as review_trades
 from ..strategies import instances as strategy_instances, type_of
 from ..settings import SETTINGS_KEY, SettingsError, describe as describe_settings
@@ -62,7 +64,14 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         return {"mode": cfg.mode, "data": cfg.data, "broker": engine.broker.name,
                 "account": account, "gateway": engine.gateway(), "universe": engine.cfg.universe,
                 "allow_new_entries": engine.cfg.allow_new_entries,
-                "strategies": [s.name for s in engine.strategies]}
+                "strategies": [s.name for s in engine.strategies],
+                "activity": _activity()}
+
+    def _activity() -> dict:
+        """When prices and orders last moved through IB Gateway (for the 3D view's data flows)."""
+        orders = [e for e in engine.store.events(limit=200) if e.get("kind") in ("open", "close", "roll", "no_fill")]
+        return {"prices_at": recorder.last_write(cfg.record.path) if cfg.record.enabled else None,
+                "orders_at": orders[0]["ts"] if orders else None}  # events come newest first
 
     @app.get("/api/config")
     def config():
@@ -292,6 +301,92 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     @app.get("/api/performance")
     def perf():
         return performance(engine.store.positions(None), engine.store.snapshots())
+
+    # ---- supervisor (chat) -------------------------------------------------------
+
+    def _scan_summary(limit: int = 10) -> dict:
+        sc = engine.store.latest_scan()
+        cands = sc["candidates"]
+        reasons: dict[str, int] = {}
+        for c in cands:
+            for r in c.get("reasons", []):
+                k = re.sub(r"-?\d+(\.\d+)?", "#", r)
+                reasons[k] = reasons.get(k, 0) + 1
+        top = sorted(cands, key=lambda c: c.get("score", 0), reverse=True)[:limit]
+        keep = ("description", "net_credit", "max_loss", "max_profit", "pop", "expected_value", "score", "approved", "qty", "reasons")
+        return {"ts": sc["ts"], "ideas": len(cands), "approved": sum(1 for c in cands if c.get("approved")),
+                "top_block_reasons": sorted(reasons.items(), key=lambda kv: -kv[1])[:5],
+                "best_ideas": [{k: c.get(k) for k in keep} for c in top]}
+
+    def _slim_settings() -> dict:
+        v = get_settings()
+        pick = lambda fields: {f["key"]: f["value"] for f in fields}
+        return {"allow_new_entries": v["allow_new_entries"],
+                "tickers": [t["symbol"] for t in v["tickers"] if t["enabled"]],
+                "strategies": [{"id": x["name"], "type": x["type"], "label": x["label"], "enabled": x["enabled"],
+                                "same_day": x.get("same_day"), "entry": pick(x.get("entry", [])), "exit": pick(x.get("exit", []))}
+                               for x in v["strategies"]]}
+
+    def _overview() -> dict:
+        st = status()
+        try:
+            rk = risk()
+            rk = {k: rk.get(k) for k in ("equity", "drawdown", "day_change_pct", "open_risk", "open_positions",
+                                         "max_portfolio_risk_pct", "per_trade_cap", "halted", "reasons", "capital")}
+        except GatewayUnavailable as e:
+            rk = {"error": str(e)}
+        pos = [{k: p.get(k) for k in ("id", "strategy", "underlying", "max_loss", "unrealized_pnl", "opened_at", "prices_at")}
+               | {"legs": [f"{l['qty']:+d} {l['symbol']} @ {l['entry_price']}" for l in p["legs"] if l.get("exit_price") is None]}
+               for p in positions("open")]
+        return {"now_utc": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+                "now_new_york": datetime.now(NY).strftime("%a %Y-%m-%d %H:%M"),
+                "status": st, "risk": rk, "open_positions": pos,
+                "last_scan": _scan_summary(3), "performance": perf()["overall"]}
+
+    def _position_detail(pid: str) -> dict:
+        out = position_payoff(pid)
+        return {"summary": out.get("summary"), "prices_at": out.get("prices_at"),
+                "breakevens": out.get("breakevens"), "max_profit": out.get("max_profit"), "max_loss": out.get("max_loss")}
+
+    supervisor_ctx = {
+        "overview": _overview,
+        "positions": lambda status_="open": positions(status_),
+        "position_detail": _position_detail,
+        "scan": _scan_summary,
+        "events": lambda n=20: [{k: e.get(k) for k in ("ts", "kind", "position_id", "message")} for e in engine.store.events(n)],
+        "risk": risk,
+        "settings": _slim_settings,
+        "market_data": lambda: recorder.summary(cfg.record.path) | {"last_saved": recorder.last_write(cfg.record.path)},
+    }
+    sup: dict = {}
+
+    def _supervisor() -> Supervisor:
+        if "s" not in sup:
+            sup["s"] = Supervisor(supervisor_ctx)  # raises SupervisorUnavailable; retried next request
+        return sup["s"]
+
+    @app.get("/api/supervisor")
+    def supervisor_status():
+        try:
+            _supervisor()
+            return {"available": True, "model": sup["s"].model}
+        except SupervisorUnavailable as e:
+            return {"available": False, "reason": str(e)}
+
+    @app.post("/api/supervisor/chat")
+    def supervisor_chat(body: dict = Body(...)):
+        """Body: {messages: [{role: "user"|"assistant", content: str}, ...]}; the last one is the question."""
+        try:
+            s = _supervisor()
+        except SupervisorUnavailable as e:
+            raise HTTPException(503, str(e))
+        try:
+            return s.chat(body.get("messages") or [])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except SupervisorUnavailable as e:
+            sup.clear()
+            raise HTTPException(503, str(e))
 
     if UI_DIST.exists():
         app.mount("/assets", StaticFiles(directory=UI_DIST / "assets"), name="assets")

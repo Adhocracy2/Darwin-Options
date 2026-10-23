@@ -220,7 +220,8 @@ def test_runs_without_gateway(monkeypatch):
     monkeypatch.setattr(IBSession, "_connect", refused)
     cfg = Config(mode="paper", db_path=":memory:")
     eng = build_engine(cfg)  # must not raise
-    assert eng.gateway() == {"connected": False, "error": eng.session.last_error}
+    g = eng.gateway()
+    assert g["connected"] is False and g["error"] == eng.session.last_error and g["ibkr"] is None
     assert "Connect call failed" in eng.session.last_error
     assert "IB Gateway not connected" in eng.run_once(force=True)["skipped"]
     assert len(attempts) == 1  # inside the retry window: no new connect attempt
@@ -416,3 +417,19 @@ def test_daily_closes_are_kept_for_an_hour(ib_engine, monkeypatch):
     monkeypatch.setattr(data_ibkr, "CLOSES_CACHE_S", 0)
     eng.md.closes("SPY")
     assert calls == ["SPY", "SPY"]
+
+
+def test_gateway_link_to_ibkr_from_notices(ib_engine):
+    eng, fake, md = ib_engine
+    s = eng.md.s
+    s._on_notice(-1, 2104, "Market data farm connection is OK:usfarm")
+    s._on_notice(-1, 2106, "HMDS data farm connection is OK:ushmds")
+    s._on_notice(-1, 2108, "HMDS data farm connection is inactive but should be available upon demand.apachmds")
+    g = s.link_status()
+    assert g["ibkr"] is True and g["farms"] == {"usfarm": "ok", "ushmds": "ok", "apachmds": "inactive"}
+    s._on_notice(-1, 1100, "Connectivity between IBKR and Trader Workstation has been lost.")
+    s._on_notice(-1, 2103, "Market data farm connection is broken:usfarm")
+    g = s.link_status()
+    assert g["ibkr"] is False and g["farms"]["usfarm"] == "broken"
+    s._on_notice(-1, 1102, "Connectivity between IBKR and Trader Workstation has been restored - data maintained.")
+    assert s.link_status()["ibkr"] is True

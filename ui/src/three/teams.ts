@@ -39,7 +39,23 @@ export type Brain = {
   equity: number | null;
 };
 
-export type World = { teams: Team[]; brain: Brain; flow: Flow };
+/** How busy a data link is: dots move fast (active), slowly (idle), not at all (down, red line). */
+export type LinkState = "active" | "idle" | "warn" | "down";
+
+export type Links = {
+  teamEngine: LinkState; // every team <-> the engine
+  dataGateway: LinkState; // Market Data <-> IB Gateway: requests out, prices in
+  tradingGateway: LinkState; // Trading <-> IB Gateway: orders out, fills in
+  portfolioGateway: LinkState; // Portfolio <-> IB Gateway: position checks out, holdings in
+  gatewayIbkr: LinkState; // IB Gateway <-> IBKR's servers
+};
+
+export type SystemId = "engine" | "gateway" | "ibkr" | "supervisor";
+
+/** Things that aren't desk teams (no desks), shown in the same card and side panel format. */
+export type SystemInfo = Omit<Team, "id"> & { id: SystemId };
+
+export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links };
 
 /** Last scan as a funnel: how many ideas reached each stage. */
 export type Flow = { scanned: number; passedChecks: number; ordered: number; topBlock: string | null };
@@ -204,8 +220,73 @@ export function buildWorld(d: Inputs): World {
     },
   ];
 
+  // ---- outside systems and the links to them
+  const gw = s?.gateway;
+  const ibkrUp = gw ? (gw.connected ? gw.ibkr ?? null : null) : null;
+  const farms = Object.entries(gw?.farms ?? {});
+  const broken = farms.filter(([, v]) => v === "broken").map(([k]) => k);
+  const recent = (ts: string | null | undefined, mins: number) => !!ts && Date.now() - new Date(ts).getTime() < mins * 60_000;
+  const pricesAt = s?.activity?.prices_at ?? null, ordersAt = s?.activity?.orders_at ?? null;
+  const moving = marketOpen || recent(pricesAt, 10);
+  const links: Links = {
+    teamEngine: marketOpen ? "active" : "idle",
+    dataGateway: !gatewayUp ? "down" : moving ? "active" : "idle",
+    tradingGateway: !gatewayUp ? "down" : recent(ordersAt, 15) || (marketOpen && !!s?.allow_new_entries) ? "active" : "idle",
+    portfolioGateway: !gatewayUp ? "down" : marketOpen ? "active" : "idle",
+    gatewayIbkr: !gatewayUp || ibkrUp === false ? "down" : broken.length ? "warn" : moving ? "active" : "idle",
+  };
+  const systems: SystemInfo[] = [
+    {
+      id: "gateway", name: "IB Gateway", color: "#ced4da",
+      job: "IBKR's desktop app on AI1 (port 4002). Every price and order goes through it.",
+      agents: [],
+      headline: { value: gatewayUp ? "Online" : "Offline", label: gatewayUp ? "Darwin connected" : "Darwin can't reach it" },
+      rows: [
+        { label: "Prices last moved", value: ago(pricesAt) },
+        { label: "Last order", value: ago(ordersAt) },
+        { label: "Account", value: s ? (s.mode === "live" ? "LIVE" : "Paper") : "–" },
+      ],
+      alert: gatewayUp ? undefined : (gw?.error ? "Offline: log in to IB Gateway on AI1" : "Offline"),
+    },
+    {
+      id: "ibkr", name: "IBKR", color: "#e03131",
+      job: "Interactive Brokers' servers: market data, order routing and the paper account.",
+      agents: [],
+      headline: {
+        value: ibkrUp === true ? "Linked" : ibkrUp === false ? "Link lost" : "Unknown",
+        label: ibkrUp === null ? "IB Gateway reports this" : "IB Gateway to IBKR",
+      },
+      rows: [
+        { label: "Data farms", value: farms.length ? `${farms.length - broken.length}/${farms.length} OK` : "–", tone: broken.length ? "neg" : farms.length ? "pos" : undefined },
+        { label: "Farms", value: farms.map(([k]) => k).join(" · ") || "–" },
+        { label: "US market", value: marketOpen ? "Open" : "Closed" },
+      ],
+      alert: ibkrUp === false ? "IBKR link lost" : broken.length ? `Farm down: ${broken.join(", ")}` : undefined,
+    },
+    {
+      id: "engine", name: "The Engine", color: "#5ad8ff",
+      job: "Runs the cycle every few minutes in market hours: prices, ideas, checks, orders, exits.",
+      agents: [],
+      headline: { value: s ? (s.mode === "live" ? "LIVE" : s.mode === "paper" ? "Paper" : "Sim") : "…", label: "trading mode" },
+      rows: [
+        { label: "Market", value: marketOpen ? "Open: cycling" : "Closed: resting" },
+        { label: "New entries", value: s?.allow_new_entries ? "On" : "Off", tone: s?.allow_new_entries ? "pos" : "neg" },
+        { label: "Last scan", value: ago(d.scan.ts) },
+      ],
+    },
+    {
+      id: "supervisor", name: "Supervisor", color: "#ffd43b",
+      job: "Ask about anything in the system. The Supervisor can look things up, not trade.",
+      agents: [],
+      headline: { value: "Ask me", label: "click to chat" },
+      rows: [],
+    },
+  ];
+
   return {
     teams,
+    systems,
+    links,
     brain: {
       mode: s ? (s.mode === "live" ? "LIVE" : s.mode === "paper" ? "Paper" : "Sim") : "…",
       marketOpen, gatewayUp, entriesOn: !!s?.allow_new_entries,

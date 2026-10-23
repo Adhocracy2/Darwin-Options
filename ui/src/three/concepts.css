@@ -6,24 +6,11 @@
   position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--c3-bg); color: var(--c3-text);
   font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-.c3-2 {
-  --c3-bg: #e9e4dc; --c3-bar: rgba(255, 252, 247, 0.9); --c3-text: #2b2f36; --c3-muted: #6f7680;
-  --c3-line: rgba(0, 0, 0, 0.08); --c3-accent: #1c7ed6; --c3-panel: rgba(255, 253, 249, 0.97);
-  --c3-good: #2b8a3e; --c3-bad: #c92a2a; --c3-warn: #b7791f;
-}
-.c3-3 { --c3-bg: #101418; --c3-bar: rgba(16, 20, 24, 0.9); --c3-accent: #3bc9db; --c3-panel: rgba(24, 30, 36, 0.95); }
-
 .c3-bar { display: flex; align-items: center; gap: 18px; padding: 10px 18px; background: var(--c3-bar); border-bottom: 1px solid var(--c3-line); z-index: 3; backdrop-filter: blur(8px); }
 .c3-back { color: var(--c3-muted); text-decoration: none; white-space: nowrap; }
 .c3-back:hover { color: var(--c3-text); }
 .c3-title { font-weight: 700; font-size: 15px; white-space: nowrap; }
 .c3-title span { font-weight: 400; color: var(--c3-muted); margin-left: 6px; }
-.c3-switch { display: flex; gap: 6px; }
-.c3-switch button { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1px solid var(--c3-line); background: transparent; color: var(--c3-muted); font: inherit; cursor: pointer; }
-.c3-switch button span { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--c3-line); font-size: 11px; font-weight: 700; }
-.c3-switch button:hover { color: var(--c3-text); }
-.c3-switch button.on { color: var(--c3-text); border-color: var(--c3-accent); }
-.c3-switch button.on span { background: var(--c3-accent); color: #0b1020; }
 .c3-status { margin-left: auto; display: flex; gap: 14px; color: var(--c3-muted); white-space: nowrap; }
 .c3-status .ok { color: var(--c3-good); }
 .c3-status .bad { color: var(--c3-bad); font-weight: 600; }
@@ -39,8 +26,7 @@
 .c3-mobile { display: none; }
 @media (max-width: 899px) {
   .c3-mobile { display: grid; place-items: center; position: absolute; inset: 0; padding: 24px; text-align: center; background: var(--c3-bg); z-index: 5; }
-  .c3-status, .c3-switch button { font-size: 0; }
-}
+  .c3-status, }
 
 /* details panel */
 .c3-panel { position: absolute; top: 14px; right: 14px; bottom: 14px; width: 320px; overflow: auto; padding: 18px; border-radius: 14px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25); }
@@ -85,22 +71,42 @@
 .cc-hub b { display: block; font-size: 11px; letter-spacing: 0.14em; }
 .cc-hub span { font-size: 11px; color: #8b97ad; }
 
-/* 2 · studio: small white tags */
-.st-tag { padding: 7px 11px; border-radius: 10px; background: #fff; color: #2b2f36; box-shadow: 0 4px 14px rgba(60, 50, 30, 0.14); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; user-select: none; text-align: center; }
-.st-name { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; font-size: 12px; }
-.st-name i { width: 8px; height: 8px; border-radius: 50%; }
-.st-big { font-size: 11px; color: #6f7680; }
-.st-big b { color: #2b2f36; font-size: 14px; }
-.st-alert { margin-top: 4px; font-size: 11px; font-weight: 700; color: #b7791f; }
-.st-tag.hover, .st-tag.selected { transform: translateY(-3px); box-shadow: 0 0 0 2px #1c7ed6, 0 8px 20px rgba(60, 50, 30, 0.2); }
-.st-hub { padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #2b2f36; font-size: 11px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1); pointer-events: none; }
 
-/* 3 · assembly line: slate cards with steps, funnel chips */
-.pl-card { background: rgba(26, 32, 39, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); color: #e9edf1; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
-.pl-card .c-row b.pos { color: #69db7c; } .pl-card .c-row b.neg { color: #ff8787; }
-.pl-card .c-alert { background: rgba(255, 107, 107, 0.15); color: #ffa8a8; }
-.pl-card.hover, .pl-card.selected { border-color: #3bc9db; transform: translateY(-3px); box-shadow: 0 0 0 1px #3bc9db, 0 8px 28px rgba(59, 201, 219, 0.25); }
-.pl-chip { padding: 4px 10px; border-radius: 999px; font-size: 12px; color: #e9edf1; background: rgba(16, 20, 24, 0.88); border: 1px solid; pointer-events: none; text-align: center; }
-.pl-chip b { font-size: 14px; margin-right: 3px; }
-.pl-chip span { display: block; font-size: 10px; color: #ffa8a8; }
-.pl-chip.ideas { border-color: #74c0fc; } .pl-chip.passed { border-color: #69db7c; } .pl-chip.ordered { border-color: #fab005; }
+.c3-status .warn { color: var(--c3-warn); font-weight: 600; }
+.c3-ask { padding: 6px 14px; border-radius: 999px; border: 1px solid #ffd43b; background: rgba(255, 212, 59, 0.1); color: #ffe066; font: inherit; font-weight: 600; cursor: pointer; }
+.c3-ask:hover, .c3-ask.on { background: #ffd43b; color: #1a1400; }
+.c3-sep { width: 1px; align-self: stretch; background: var(--c3-line); }
+.c3-legend i.line-down { width: 14px; height: 3px; border-radius: 2px; background: #ff6b6b; vertical-align: 2px; }
+.c3-note { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c3-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c3-warn) 45%, transparent); }
+
+/* outside systems and the supervisor tag */
+.cc-card.sys { border-color: rgba(255, 135, 135, 0.4); }
+.cc-sup { display: flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; background: rgba(40, 32, 6, 0.9); border: 1px solid #ffd43b; color: #ffe066; cursor: pointer; font-size: 11px; transition: transform 0.15s, box-shadow 0.15s; user-select: none; }
+.cc-sup i { width: 8px; height: 8px; border-radius: 50%; background: #ffd43b; box-shadow: 0 0 8px #ffd43b; }
+.cc-sup b { letter-spacing: 0.1em; }
+.cc-sup span { color: #c9b87a; }
+.cc-sup.hover, .cc-sup.selected { transform: translateY(-2px); box-shadow: 0 0 18px rgba(255, 212, 59, 0.45); }
+
+/* chat */
+.c3-chat { display: flex; flex-direction: column; width: 380px; padding-bottom: 12px; }
+.chat-log { flex: 1; min-height: 0; overflow: auto; margin: 4px -6px 10px; padding: 0 6px; }
+.chat-msg { margin: 8px 0; padding: 9px 12px; border-radius: 12px; line-height: 1.45; }
+.chat-msg p { margin: 0 0 6px; } .chat-msg p:last-child { margin-bottom: 0; }
+.chat-msg ul { margin: 2px 0 6px; padding-left: 18px; }
+.chat-msg.user { margin-left: 36px; background: rgba(90, 216, 255, 0.14); border: 1px solid rgba(90, 216, 255, 0.3); }
+.chat-msg.assistant { margin-right: 20px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--c3-line); }
+.chat-tools { margin-top: 6px; font-size: 11px; color: var(--c3-muted); }
+.chat-msg.typing { color: var(--c3-muted); display: flex; align-items: center; gap: 4px; }
+.chat-msg.typing span { width: 6px; height: 6px; border-radius: 50%; background: #ffd43b; animation: c3-dot 1s infinite ease-in-out; }
+.chat-msg.typing span:nth-child(2) { animation-delay: 0.15s; } .chat-msg.typing span:nth-child(3) { animation-delay: 0.3s; margin-right: 6px; }
+@keyframes c3-dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+.chat-suggest { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.chat-suggest button { text-align: left; padding: 8px 11px; border-radius: 10px; border: 1px solid var(--c3-line); background: rgba(255, 255, 255, 0.04); color: var(--c3-text); font: inherit; cursor: pointer; }
+.chat-suggest button:hover { border-color: #ffd43b; }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; }
+.chat-input textarea { flex: 1; resize: none; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--c3-line); background: rgba(0, 0, 0, 0.25); color: var(--c3-text); font: inherit; }
+.chat-input textarea:focus { outline: none; border-color: #ffd43b; }
+.chat-input button { padding: 8px 14px; border-radius: 10px; border: 0; background: #ffd43b; color: #1a1400; font: inherit; font-weight: 700; cursor: pointer; }
+.chat-input button:disabled { opacity: 0.4; cursor: default; }
+.chat-clear { align-self: flex-start; margin-top: 8px; border: 0; background: none; color: var(--c3-muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0; }
+.chat-clear:hover { color: var(--c3-text); }

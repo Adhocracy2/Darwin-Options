@@ -78,6 +78,15 @@ renamed. Don't reintroduce "flick" names.
   open position's Payoff in the dashboard, with `analysis.outlook`: a path simulation to the planned exit using
   the manager's rules (chance of profit, average result, odds of each exit), refreshed every minute. `ibkr_check.py`: `darwin ibkr-check` places an unfillable combo
   and cancels it to prove the order path.
+- `supervisor.py`: the dashboard's Supervisor chat on Claude (`claude-opus-5-5`, SDK tool runner, server-side
+  fallback). Read-only tools over the dashboard's own data (overview, positions, position detail, scan, events,
+  risk, settings, saved prices); it can't trade or change settings. Needs `ANTHROPIC_API_KEY` in
+  `~/darwin/shared/.env` (restart darwin-web after adding). No dashboard login: anyone on the LAN can use it
+  and spend API credit.
+- UI `ui/src/three/`: the desktop-only 3D office at `#/3d` (three.js, loaded only there): teams at desks around
+  the engine, the Supervisor desk (opens chat), IB Gateway and IBKR with two-way data flows (yellow out, cyan
+  in, red = down) from `/api/status` (`gateway.ibkr`/`farms` from IB Gateway's 1100/1102/210x notices in
+  `ibkr.IBSession`, `activity` = last saved price / last order).
 - `api/app.py`: FastAPI for the UI. `cli.py`: `darwin check|scan|run|loop|serve|positions|report|review|ibkr-check|close|data|replay`.
 
 ## Deploy (CI/CD)

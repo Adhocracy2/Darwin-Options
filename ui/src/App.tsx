@@ -71,7 +71,7 @@ export default function App() {
             {!status.allow_new_entries && <span className="badge">New entries off</span>}
           </>}
         </div>
-        <a className="btn secondary" href="#/3d" title="Preview: the system as teams at desks (desktop)">3D preview</a>
+        <a className="btn secondary" href="#/3d" title="The system as teams at desks, with the Supervisor (desktop)">3D office</a>
         <button className="btn" onClick={runCycle} disabled={busy !== null}>{busy === "run" ? "Running…" : "Run cycle"}</button>
       </header>
       {error && <div className="error">{error}</div>}

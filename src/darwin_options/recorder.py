@@ -254,6 +254,16 @@ def last_spot(path: str, symbol: str, max_age_s: float | None = None) -> tuple[s
     return (row[0], row[1]) if row else None
 
 
+def last_write(path: str) -> str | None:
+    """UTC time of the newest saved price (the trader saves every cycle)."""
+    if not Path(path).exists():
+        return None
+    db = sqlite3.connect(path, timeout=30)
+    row = db.execute("SELECT MAX(ts) FROM spots").fetchone()
+    db.close()
+    return row[0] if row else None
+
+
 def summary(path: str) -> dict:
     """What has been recorded so far."""
     if not Path(path).exists():

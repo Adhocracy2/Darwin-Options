@@ -13,6 +13,7 @@ dependencies = [
   "python-dotenv>=1",
   "fastapi>=0.110",
   "uvicorn>=0.29",
+  "anthropic>=2.0,<3",  # the dashboard's Supervisor chat (Claude API)
 ]
 
 [project.optional-dependencies]

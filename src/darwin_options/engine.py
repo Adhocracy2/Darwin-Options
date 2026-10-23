@@ -63,7 +63,7 @@ class Engine:
         """IB Gateway connection state for the dashboard; None when IBKR isn't used."""
         if self.session is None:
             return None
-        return {"connected": self.session.connected, "error": self.session.last_error}
+        return {"connected": self.session.connected, "error": self.session.last_error, **self.session.link_status()}
 
     def __init__(self, cfg: Config, md: MarketData, broker: Broker, store: Store):
         self.cfg, self.md, self.broker, self.store = cfg, md, broker, store

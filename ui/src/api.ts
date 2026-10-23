@@ -40,11 +40,20 @@ export type Status = {
   data: string;
   broker: string;
   account: { equity: number; buying_power: number; is_market_open: boolean } | null;
-  gateway: { connected: boolean; error: string | null } | null;
+  gateway: {
+    connected: boolean;
+    error: string | null;
+    ibkr?: boolean | null; // IB Gateway's own link to IBKR's servers (null = unknown)
+    farms?: Record<string, "ok" | "broken" | "inactive">;
+    changed_at?: number | null;
+  } | null;
   universe: string[];
   allow_new_entries: boolean;
   strategies: string[];
+  activity?: { prices_at: string | null; orders_at: string | null };
 };
+
+export type ChatMessage = { role: "user" | "assistant"; content: string; tools?: string[] };
 
 export type Stats = {
   trades: number;
@@ -246,6 +255,10 @@ export const api = {
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
   strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),
   payoff: (r: PayoffRequest) => req<Payoff>("/api/payoff", "POST", r),
+  supervisor: () => req<{ available: boolean; reason?: string; model?: string }>("/api/supervisor"),
+  supervisorChat: (messages: ChatMessage[]) =>
+    req<{ reply: string; tools_used: string[] }>("/api/supervisor/chat", "POST",
+      { messages: messages.map(({ role, content }) => ({ role, content })) }),
   positionPayoff: (id: string, fresh = false) => req<Payoff>(`/api/positions/${id}/payoff${fresh ? "?fresh=true" : ""}`),
 };
 
