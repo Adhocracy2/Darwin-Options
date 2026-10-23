@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time as _time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,8 @@ from ..factory import build_engine
 from ..ibkr import GatewayUnavailable
 from ..manager import ExitAction
 from .. import analysis, pricing
+from .. import metrics as metrics_mod
+from .. import news as news_mod
 from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
 from ..network import NetworkMonitor
@@ -309,6 +312,118 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     @app.get("/api/performance")
     def perf():
         return performance(engine.store.positions(None), engine.store.snapshots())
+
+    # ---- metrics views ------------------------------------------------------------
+
+    met: dict = {}
+
+    def _series(closes: list[tuple[str, float]]) -> dict:
+        """Chart series for the last ~6 months: price with Bollinger bands, RSI, MACD histogram."""
+        vals = [c for _, c in closes]
+        out = []
+        start = max(len(vals) - 126, 0)
+        line = [a - b for a, b in zip(metrics_mod.ema_series(vals, 12), metrics_mod.ema_series(vals, 26))]
+        signal = metrics_mod.ema_series(line, 9)
+        for i in range(start, len(vals)):
+            bb = metrics_mod.bollinger(vals[: i + 1])
+            out.append({"d": closes[i][0], "close": vals[i], "upper": bb and bb["upper"], "lower": bb and bb["lower"],
+                        "mid": bb and bb["mid"], "rsi": metrics_mod.rsi(vals[: i + 1]),
+                        "macd_hist": (line[i] - signal[i]) if len(vals) >= 35 else None})
+        return {"price_series": out}
+
+    def _symbol_metrics(sym: str, missing: list[str]) -> dict:
+        md = engine.md
+        def get(name: str, *args, default=None):
+            fn = getattr(md, name, None)
+            if fn is None:
+                return default
+            try:
+                return fn(*args)
+            except GatewayUnavailable:
+                raise
+            except Exception as e:  # one missing input must not sink the rest
+                missing.append(f"{sym} {name}: {e}")
+                return default
+        price_hist = get("history", sym, "price", default=None)
+        if price_hist is None:  # offline/synthetic market: closes without dates
+            price_hist = [(str(i), c) for i, c in enumerate(md.closes(sym, 260))]
+        iv_hist = get("history", sym, "iv", default=[]) or []
+        hv_hist = get("history", sym, "hv", default=[]) or []
+        stats = get("underlying_stats", sym, default={}) or {}
+        closes = [c for _, c in price_hist]
+        iv_now = stats.get("iv") or (iv_hist[-1][1] if iv_hist else None)
+        iv_vals = [v for _, v in iv_hist][-252:]
+        hv20 = pricing.realized_vol(closes, 20)
+        call_oi, put_oi = stats.get("call_oi"), stats.get("put_oi")
+        call_v, put_v = stats.get("call_volume"), stats.get("put_volume")
+        if not iv_hist:
+            missing.append(f"{sym}: no implied-volatility history, so no IV rank or percentile")
+        if call_v is None:
+            missing.append(f"{sym}: option volume not reported (usually outside market hours)")
+        try:
+            spot = _spot(sym)[0]
+        except Exception:
+            spot = closes[-1] if closes else None
+        return {
+            "symbol": sym, "spot": spot,
+            "vol": {"iv": iv_now, "hv20": hv20, "hv_ibkr": stats.get("hv") or (hv_hist[-1][1] if hv_hist else None),
+                    "iv_rank": metrics_mod.iv_rank(iv_vals, iv_now) if iv_now else None,
+                    "iv_percentile": metrics_mod.iv_percentile(iv_vals, iv_now) if iv_now else None,
+                    "iv_hv": (iv_now / hv20) if iv_now and hv20 else None,
+                    "iv_history": [{"d": d, "iv": v} for d, v in iv_hist][-252:],
+                    "hv_history": [{"d": d, "hv": v} for d, v in hv_hist][-252:]},
+            "tech": metrics_mod.technicals(closes) | _series(price_hist),
+            "sentiment": {"call_oi": call_oi, "put_oi": put_oi,
+                          "pcr_oi": (put_oi / call_oi) if call_oi and put_oi else None,
+                          "call_volume": call_v, "put_volume": put_v,
+                          "pcr_volume": (put_v / call_v) if call_v and put_v else None,
+                          "order_flow": None},
+        }
+
+    @app.get("/api/metrics")
+    def get_metrics(fresh: bool = False):
+        """Volatility, technicals and sentiment per ticker, portfolio Greeks and lifecycle. Cached 2 min."""
+        if not fresh and met.get("at") and _time.monotonic() - met["at"] < 120:
+            return met["data"]
+        missing: list[str] = ["Order flow, block trades and sweeps need a paid tick-by-tick feed: not available"]
+        symbols = []
+        for sym in engine.cfg.universe:
+            try:
+                symbols.append(_symbol_metrics(sym, missing))
+            except GatewayUnavailable as e:
+                missing.append(f"{sym}: {e}")
+        open_pos = engine.store.positions("open")
+        syms = [l.symbol for p in open_pos for l in p.open_legs]
+        greeks = None
+        try:
+            quotes, _ = _prices(syms) if syms else ({}, None)
+            spots = {p.underlying: _spot(p.underlying)[0] for p in open_pos}
+            greeks = metrics_mod.portfolio_greeks(open_pos, quotes, spots, engine.md.today(), cfg.risk_free_rate)
+        except Exception as e:
+            missing.append(f"portfolio Greeks: {e}")
+        life = metrics_mod.lifecycle(engine.store.positions(None), engine.store.events(500), cfg.risk.capital)
+        data = {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"), "symbols": symbols,
+                "portfolio": {"greeks": greeks, "lifecycle": life}, "unavailable": missing}
+        met.update(at=_time.monotonic(), data=data)
+        return data
+
+    @app.get("/api/news")
+    def get_news():
+        """Headlines per ticker: Yahoo Finance (with links) and IBKR's free providers."""
+        out = []
+        for sym in engine.cfg.universe:
+            try:
+                out += [x | {"symbol": sym} for x in news_mod.yahoo(sym)]
+            except Exception as e:
+                log.warning("yahoo news %s: %s", sym, e)
+            fn = getattr(engine.md, "news_headlines", None)
+            if fn:
+                try:
+                    out += [x | {"symbol": sym, "source": f"IBKR {x['provider']}", "link": None} for x in fn(sym)]
+                except Exception as e:
+                    log.warning("ibkr news %s: %s", sym, e)
+        out.sort(key=lambda x: x.get("ts") or "", reverse=True)
+        return out[:40]
 
     # ---- supervisor (chat) -------------------------------------------------------
 

@@ -58,6 +58,37 @@ export type Status = {
   version?: string; // deployed git revision (short)
 };
 
+export type PricePoint = { d: string; close: number; upper: number | null; lower: number | null; mid: number | null; rsi: number | null; macd_hist: number | null };
+export type SymbolMetrics = {
+  symbol: string;
+  spot: number | null;
+  vol: {
+    iv: number | null; hv20: number | null; hv_ibkr: number | null; iv_rank: number | null; iv_percentile: number | null;
+    iv_hv: number | null; iv_history: { d: string; iv: number }[]; hv_history: { d: string; hv: number }[];
+  };
+  tech: {
+    price: number | null; rsi14: number | null; sma20: number | null; sma50: number | null; sma200: number | null; ema20: number | null;
+    bollinger: { upper: number; mid: number; lower: number; pct_b: number | null; width: number | null } | null;
+    macd: { macd: number; signal: number; hist: number } | null; trend: "up" | "down" | "mixed" | null;
+  } & { price_series?: PricePoint[] };
+  sentiment: { call_oi: number | null; put_oi: number | null; pcr_oi: number | null; call_volume: number | null; put_volume: number | null; pcr_volume: number | null };
+};
+export type Greeks = { delta: number; gamma: number; theta: number; vega: number; rho: number };
+export type Metrics = {
+  as_of: string;
+  symbols: SymbolMetrics[];
+  portfolio: {
+    greeks: (Greeks & { delta_dollars: number | null; legs_without_prices: number; positions: (Greeks & { id: string; underlying: string; strategy: string })[] }) | null;
+    lifecycle: {
+      trades: number; closed: number; avg_dte_at_entry: number | null; avg_delta_at_entry: number | null; assignments: number;
+      early_exercises: number; assignment_rate: number | null; realized_net: number; fees: number; roi: number | null;
+      annualized_roi: number | null; days_trading: number | null;
+    };
+  };
+  unavailable: string[];
+};
+export type NewsItem = { title: string; link: string | null; ts: string | null; source: string; symbol: string };
+
 export type ChatMessage = { role: "user" | "assistant"; content: string; tools?: string[] };
 
 export type Stats = {
@@ -260,6 +291,8 @@ export const api = {
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
   strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),
   payoff: (r: PayoffRequest) => req<Payoff>("/api/payoff", "POST", r),
+  metrics: (fresh = false) => req<Metrics>(`/api/metrics${fresh ? "?fresh=true" : ""}`),
+  news: () => req<NewsItem[]>("/api/news"),
   supervisor: () => req<{ available: boolean; reason?: string; model?: string }>("/api/supervisor"),
   supervisorChat: (messages: ChatMessage[]) =>
     req<{ reply: string; tools_used: string[] }>("/api/supervisor/chat", "POST",

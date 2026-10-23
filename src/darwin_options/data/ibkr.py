@@ -30,7 +30,11 @@ log = logging.getLogger(__name__)
 
 STREAM_FIRST_S = 3.0  # wait this long for a new price stream's first tick
 STREAM_STALE_S = 300
-CLOSES_CACHE_S = 3600  # restart a stream with no update for this long during market hours
+CLOSES_CACHE_S = 3600
+# Extra fields on the stock stream: option volume (100), option open interest (101),
+# historical volatility (104) and the stock's option-implied volatility (106).
+STREAM_TICKS = "100,101,104,106"
+HISTORY = {"price": "TRADES", "iv": "OPTION_IMPLIED_VOLATILITY", "hv": "HISTORICAL_VOLATILITY"}  # restart a stream with no update for this long during market hours
 
 
 def _price(t) -> float | None:
@@ -86,7 +90,7 @@ class IBKRMarketData:
             if not fresh:
                 if stream is not None and stream[0] is ib:
                     ib.cancelMktData(stream[1].contract)
-                stream = (ib, ib.reqMktData(await self._stock(symbol), "", False, False))
+                stream = (ib, ib.reqMktData(await self._stock(symbol), STREAM_TICKS, False, False))
                 self._streams[symbol] = stream
             t = stream[1]
             deadline = time.monotonic() + STREAM_FIRST_S
@@ -120,6 +124,43 @@ class IBKRMarketData:
         self._closes = {k: v for k, v in self._closes.items() if k[-1] == key[-1]}
         self._closes[key] = (time.monotonic(), out)
         return list(out)
+
+    def history(self, symbol: str, kind: str = "price") -> list[tuple[str, float]]:
+        """A year of daily values, oldest first: (date, value). `kind` is price, iv (30-day option-implied
+        volatility) or hv (historical volatility). Kept for CLOSES_CACHE_S."""
+        key = ("hist", symbol, kind, self.today())
+        hit = self._closes.get(key)
+        if hit and time.monotonic() - hit[0] < CLOSES_CACHE_S:
+            return list(hit[1])
+
+        async def go():
+            bars = await self.s.ib.reqHistoricalDataAsync(await self._stock(symbol), "", "1 Y", "1 day", HISTORY[kind], True)
+            return [(str(b.date), float(b.close)) for b in bars if num(b.close) is not None]
+        out = self.s.call(go)
+        self._closes[key] = (time.monotonic(), out)
+        return list(out)
+
+    def news_headlines(self, symbol: str, limit: int = 10) -> list[dict]:
+        """Recent headlines from IBKR's free providers for a ticker: [{ts, provider, title}]."""
+        async def go():
+            stk = await self._stock(symbol)
+            providers = "+".join(p.code for p in await self.s.ib.reqNewsProvidersAsync())
+            items = await self.s.ib.reqHistoricalNewsAsync(stk.conId, providers, "", "", limit)
+            return [{"ts": str(h.time), "provider": h.providerCode, "title": h.headline.split("}", 1)[-1].strip()}
+                    for h in (items or [])]
+        return self.s.call(go)
+
+    def underlying_stats(self, symbol: str) -> dict:
+        """Today's implied and historical volatility and option volume / open interest for the
+        stock, from its streaming subscription (None for anything IBKR hasn't sent)."""
+        self.spot(symbol)  # makes sure the stream is running
+        _, t = self._streams[symbol]
+        deadline = time.monotonic() + 3  # a new stream sends open interest a moment after the price
+        while num(t.callOpenInterest) is None and time.monotonic() < deadline:
+            time.sleep(0.1)
+        return {"iv": num(t.impliedVolatility), "hv": num(t.histVolatility),
+                "call_oi": num(t.callOpenInterest), "put_oi": num(t.putOpenInterest),
+                "call_volume": num(t.callVolume), "put_volume": num(t.putVolume)}
 
     async def _tickers(self, contracts: list) -> list:
         out = []

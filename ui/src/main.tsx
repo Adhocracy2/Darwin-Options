@@ -5,6 +5,7 @@ import "./styles.css";
 
 // The 3D preview (#/3d) loads three.js only when opened.
 const OfficePage = lazy(() => import("./three/OfficePage"));
+const MetricsPage = lazy(() => import("./metrics/MetricsPage"));
 
 function Root() {
   const [hash, setHash] = useState(location.hash);
@@ -14,6 +15,7 @@ function Root() {
     return () => window.removeEventListener("hashchange", on);
   }, []);
   if (hash.startsWith("#/3d")) return <Suspense fallback={null}><OfficePage /></Suspense>;
+  if (hash.startsWith("#/metrics")) return <Suspense fallback={null}><MetricsPage /></Suspense>;
   return <App />;
 }
 

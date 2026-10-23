@@ -44,7 +44,7 @@ def greeks(s: float, k: float, t: float, r: float, sigma: float, right: Right) -
     if t <= 0 or sigma <= 0:
         itm = (s > k) if right is Right.CALL else (s < k)
         return {"delta": (1.0 if right is Right.CALL else -1.0) if itm else 0.0,
-                "gamma": 0.0, "theta": 0.0, "vega": 0.0}
+                "gamma": 0.0, "theta": 0.0, "vega": 0.0, "rho": 0.0}
     d1, d2 = _d1_d2(s, k, t, r, sigma)
     gamma = norm_pdf(d1) / (s * sigma * math.sqrt(t))
     vega = s * norm_pdf(d1) * math.sqrt(t) / 100  # per 1 vol point
@@ -54,7 +54,9 @@ def greeks(s: float, k: float, t: float, r: float, sigma: float, right: Right) -
     else:
         delta = norm_cdf(d1) - 1
         theta = -s * norm_pdf(d1) * sigma / (2 * math.sqrt(t)) + r * k * math.exp(-r * t) * norm_cdf(-d2)
-    return {"delta": delta, "gamma": gamma, "theta": theta / 365, "vega": vega}
+    disc = k * t * math.exp(-r * t) / 100  # rho per 1 percentage point of interest rate
+    rho = disc * norm_cdf(d2) if right is Right.CALL else -disc * norm_cdf(-d2)
+    return {"delta": delta, "gamma": gamma, "theta": theta / 365, "vega": vega, "rho": rho}
 
 
 def implied_vol(price: float, s: float, k: float, t: float, r: float, right: Right) -> float | None:
