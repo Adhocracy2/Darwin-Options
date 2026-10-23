@@ -76,9 +76,9 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .pos { color: var(--good); }
 .neg { color: var(--critical); }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-button.btn { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; cursor: pointer; }
-button.btn.secondary { background: none; color: var(--text-primary); border: 1px solid var(--border); }
-button.btn:disabled { opacity: .5; cursor: default; }
+.btn { text-decoration: none; display: inline-block; background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; cursor: pointer; }
+.btn.secondary { background: none; color: var(--text-primary); border: 1px solid var(--border); }
+.btn:disabled { opacity: .5; cursor: default; }
 .status-ok::before { content: "✓ "; }
 .status-no::before { content: "✕ "; }
 .error { background: color-mix(in srgb, var(--critical) 12%, transparent); border: 1px solid var(--critical); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
