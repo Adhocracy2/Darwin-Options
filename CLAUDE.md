@@ -49,7 +49,10 @@ renamed. Don't reintroduce "flick" names.
   same-day and automatically gets `strategies/sameday.py` rules (entries 10:00–13:30 NY, no delayed
   quotes, no half-days, looser wing liquidity) plus `close_by_time` (default 15:30) in its exit rules,
   hours-based valuation in `common.price_candidate` (`clock.py`, `analysis.evaluate_intraday`), and
-  is never rolled. Calendars and LEAPS calls can't be same-day.
+  is never rolled. Calendars and LEAPS calls can't be same-day. Same-day also has its own risk budget (Risk Desk:
+  1% of equity per trade, 3 trades/day, 2 open, stop for the day at 2% same-day loss, `same_day.skip_dates`) and
+  profit plan (manager: take-profit falling 50% -> 35% after 13:00 -> 25% after 14:30, profit lock 40% -> 15%,
+  close anything losing at 14:30), all in `same_day` config. Untested live: needs OPRA quotes.
 - `analysis.py`: expected value / probability of profit. Lognormal model with forecast vol =
   blend of IV and 30-day realized vol; trades valued at the **planned exit** (close-at-DTE), legs
   repriced at their IV, never below intrinsic (American options); subtracts commissions and

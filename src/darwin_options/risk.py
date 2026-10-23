@@ -63,7 +63,8 @@ class RiskGate:
         self.cfg = cfg
 
     def check(self, c: Candidate, positions: list[Position], equity: float,
-              buying_power: float, today: date, state: "RiskState | None" = None) -> RiskDecision:
+              buying_power: float, today: date, state: "RiskState | None" = None,
+              same_day_today: dict | None = None) -> RiskDecision:
         """`state` (from portfolio.assess) applies stage limits, measured-edge sizing, drawdown
         brakes and correlated-group caps. Without it, the flat limits in config apply."""
         r, m = self.cfg.risk, self.cfg.management.for_strategy(c.strategy)
@@ -98,6 +99,17 @@ class RiskGate:
             if sum(p.underlying == c.underlying for p in positions) >= r.max_positions_per_underlying:
                 reasons.append(f"max positions on {c.underlying} reached")
             cap = state.per_trade_cap if state else min(r.max_loss_per_trade, per_trade_pct * equity)
+            if m.close_by_time is not None and all(l.contract.dte(today) == 0 for l in c.legs):
+                # same-day (0DTE): its own, smaller budget
+                sd, st = self.cfg.same_day, same_day_today or {"trades": 0, "open": 0, "pnl": 0.0}
+                cap = min(cap, sd.max_risk_per_trade_pct * equity)
+                if st["trades"] >= sd.max_trades_per_day:
+                    reasons.append(f"same-day: {st['trades']} trades today (max {sd.max_trades_per_day})")
+                if st["open"] >= sd.max_open:
+                    reasons.append(f"same-day: {st['open']} open (max {sd.max_open})")
+                if -st["pnl"] >= sd.daily_loss_limit_pct * equity:
+                    reasons.append(f"same-day: today's losses ${-st['pnl']:.0f} reached the daily limit "
+                                   f"({sd.daily_loss_limit_pct:.0%} of equity)")
             if state and state.pilot:
                 from .strategies import type_of
 

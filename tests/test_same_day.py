@@ -171,3 +171,66 @@ def test_same_day_positions_never_roll(cfg):
                    max_loss=480, max_profit=20)
     roll, why = find_roll(pos, "dte exit: x", StrategyContext(eng.cfg, md, [], FRIDAY, ny(11)), eng.gate, [], 10_000, None)
     assert roll is None and "never rolled" in why
+
+
+# ---- the 0DTE risk budget and profit plan (same_day in config) ----
+
+def _quotes(pos, short_mid, long_mid):
+    """Quotes that put the $40-credit condor at a chosen profit: close cost = 2*(short-long)*100."""
+    from darwin_options.models import OptionQuote
+    return {l.symbol: OptionQuote(l.contract, bid=(short_mid if l.qty < 0 else long_mid), ask=(short_mid if l.qty < 0 else long_mid), iv=0.2)
+            for l in pos.open_legs}
+
+
+@pytest.mark.parametrize("short_mid,at,closes", [
+    (0.30, ny(11), True),       # 50% of credit at 11:00: hits the 50% target
+    (0.33, ny(11), False),      # 35% at 11:00: below the morning target
+    (0.33, ny(13, 30), True),   # 35% after 13:00: target has dropped to 35%
+    (0.345, ny(14, 45), True),  # 27.5% after 14:30: target 25%
+])
+def test_take_profit_falls_through_the_day(cfg, short_mid, at, closes):
+    eng, _ = make_engine(cfg, at)
+    add_condor(eng)
+    a = PositionManager(eng.cfg).evaluate(_condor_position(), _quotes(_condor_position(), short_mid, 0.20), 600, FRIDAY, at)
+    assert (a is not None and a.reason.startswith("same-day take profit")) is closes
+
+
+def test_profit_lock_and_losing_time_stop(cfg):
+    eng, _ = make_engine(cfg, ny(11))
+    add_condor(eng)
+    mgr, pos = PositionManager(eng.cfg), _condor_position()
+    assert mgr.evaluate(pos, _quotes(pos, 0.31, 0.20), 600, FRIDAY, ny(11)) is None  # 45%: under target, remembered
+    a = mgr.evaluate(pos, _quotes(pos, 0.38, 0.20), 600, FRIDAY, ny(11, 30))  # back to 10%
+    assert a and a.reason.startswith("same-day profit lock")
+    losing = _condor_position()
+    assert mgr.evaluate(losing, _quotes(losing, 0.45, 0.20), 600, FRIDAY, ny(14)) is None  # -$10, stop is -$60
+    a = mgr.evaluate(losing, _quotes(losing, 0.45, 0.20), 600, FRIDAY, ny(14, 30))
+    assert a and a.urgent and a.reason.startswith("same-day time stop")
+
+
+def test_risk_budget_for_same_day_trades(cfg):
+    eng, _ = make_engine(cfg, ny(11))
+    add_condor(eng)
+    best = max((c for c in eng.scan() if c.strategy == "condor_0dte"), key=lambda c: c.score)
+    ok = eng.gate.check(best, [], 10_000, 10_000, FRIDAY, None, {"trades": 0, "open": 0, "pnl": 0.0})
+    assert ok.qty * best.max_loss <= 100 + 1e-6 or not ok.approved  # at most 1% of $10k at risk
+    for stats, why in [({"trades": 3, "open": 0, "pnl": 0.0}, "trades today"),
+                       ({"trades": 1, "open": 2, "pnl": 0.0}, "open (max"),
+                       ({"trades": 1, "open": 0, "pnl": -250.0}, "daily limit")]:
+        d = eng.gate.check(best, [], 10_000, 10_000, FRIDAY, None, stats)
+        assert not d.approved and any(why in r for r in d.reasons), (stats, d.reasons)
+
+
+def test_event_days_and_todays_stats(cfg):
+    from darwin_options.strategies import sameday
+    from darwin_options.strategies.base import StrategyContext
+    cfg.same_day.skip_dates = [FRIDAY.isoformat()]
+    assert "event day" in sameday.blocked(StrategyContext(cfg, None, [], FRIDAY, ny(11)))
+    a, b = _condor_position(), _condor_position()
+    a.opened_at = b.opened_at = "2026-10-23T15:00:00+00:00"
+    b.status = "closed"
+    for l in b.legs:
+        l.exit_price = l.entry_price + (0.3 if l.qty < 0 else 0.0)  # a loss
+    st = sameday.today_stats([a, b], FRIDAY)
+    assert st["trades"] == 2 and st["open"] == 1 and st["pnl"] < 0
+    assert sameday.today_stats([a, b], date(2026, 10, 26))["trades"] == 0

@@ -149,7 +149,12 @@ export type Settings = {
   allow_new_entries_default: boolean;
   strategies: StrategySettings[];
   types: StrategyType[];
-  same_day: { entry_start: string; entry_end: string; close_by_time: string; live_data: boolean };
+  same_day: {
+    entry_start: string; entry_end: string; close_by_time: string; live_data: boolean;
+    max_risk_per_trade_pct: number; max_trades_per_day: number; max_open: number; daily_loss_limit_pct: number;
+    profit_targets: [string, number][]; lock_profit_at: number; lock_profit_floor: number; losing_time_stop: string;
+    skip_dates: string[];
+  };
   tickers: TickerSetting[];
   fields: Record<string, FieldMeta>;
 };

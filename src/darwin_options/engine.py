@@ -352,8 +352,9 @@ class Engine:
         acct = self.broker.account()
         positions = self.store.positions("open")
         state = self.risk_state(acct.equity)
+        sd_today = sameday.today_stats(self.store.positions(None), self.md.today())
         for c in self.scan():
-            decision = self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state)
+            decision = self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state, sd_today)
             if decision.approved and (c.underlying in touched or len(opened) >= self.cfg.max_new_trades_per_cycle):
                 decision.approved, decision.reasons = False, ["cycle limit / already traded this underlying"]
             elif decision.approved and unfilled >= self.cfg.execution.max_unfilled_entries_per_cycle:
@@ -376,6 +377,7 @@ class Engine:
                     acct = self.broker.account()
                     positions = self.store.positions("open")
                     state = self.risk_state(acct.equity)
+                    sd_today = sameday.today_stats(self.store.positions(None), self.md.today())
         self.store.save_scan(trim_scan(rows))
         return opened
 
@@ -385,7 +387,8 @@ class Engine:
         acct = self.broker.account()
         positions = self.store.positions("open")
         state = self.risk_state(acct.equity)
-        rows = [candidate_row(c, self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state))
+        sd_today = sameday.today_stats(self.store.positions(None), self.md.today())
+        rows = [candidate_row(c, self.gate.check(c, positions, state.equity, acct.buying_power, self.md.today(), state, sd_today))
                 for c in self.scan()]
         self.store.save_scan(trim_scan(rows))
         return rows

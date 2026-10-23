@@ -388,11 +388,21 @@ export function StrategiesView({ live, onSaved }: { live: boolean; onSaved: () =
               <Switch checked={d.enabled} label={`${d.label} enabled`} onChange={(v) => setStrategy(d.name, { enabled: v })} />
             </div>
             {sd && (
-              <p className="small note">
-                Trades options expiring today: opens only {server.same_day.entry_start}–{server.same_day.entry_end} New York,
-                closes everything by its close-by time, skips half-days, and never trades on delayed quotes.
-                {!server.same_day.live_data && <> <strong>Won't trade yet:</strong> your IBKR quotes are delayed (needs an options data subscription).</>}
-              </p>
+              <div className="small note">
+                <p style={{ margin: 0 }}>
+                  Trades options expiring today: opens only {server.same_day.entry_start}–{server.same_day.entry_end} New York,
+                  closes everything by its close-by time, skips half-days{server.same_day.skip_dates.length ? ` and ${server.same_day.skip_dates.length} event day(s)` : ""}, and never trades on delayed quotes.
+                  {!server.same_day.live_data && <> <strong>Won't trade yet:</strong> your IBKR quotes are delayed (needs an options data subscription).</>}
+                </p>
+                <p style={{ margin: "6px 0 0" }}>
+                  <strong>0DTE risk:</strong> up to {(server.same_day.max_risk_per_trade_pct * 100).toFixed(0)}% of the account per trade,
+                  {" "}{server.same_day.max_trades_per_day} trades a day, {server.same_day.max_open} open at once; no more today once
+                  same-day losses reach {(server.same_day.daily_loss_limit_pct * 100).toFixed(0)}%.
+                  {" "}<strong>Profits:</strong> take profit at {server.same_day.profit_targets.map(([t, p], i) => `${(p * 100).toFixed(0)}%${i ? ` after ${t}` : ""}`).join(", ")} of the credit;
+                  {" "}once up {(server.same_day.lock_profit_at * 100).toFixed(0)}%, close if it falls back to {(server.same_day.lock_profit_floor * 100).toFixed(0)}%;
+                  {" "}anything still losing at {server.same_day.losing_time_stop} is closed. The stop loss and strike guard below still apply.
+                </p>
+              </div>
             )}
             {payoffs[d.name] && (
               <details className="payoff-details">

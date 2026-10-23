@@ -87,6 +87,20 @@ class SameDayConfig:
     long_min_bid: float = 0.01
     long_max_spread: float = 0.05  # dollars
 
+    # Risk budget for all same-day trades together (the Risk Desk enforces it).
+    max_risk_per_trade_pct: float = 0.01  # of equity, below the normal per-trade cap
+    max_trades_per_day: int = 3
+    max_open: int = 2
+    daily_loss_limit_pct: float = 0.02  # no new same-day trades once today's same-day losses reach this
+    skip_dates: list = field(default_factory=list)  # "YYYY-MM-DD": Fed, CPI, jobs-report days etc.
+
+    # Exits (the manager applies them on top of the strategy's stop, strike guard and close-by time).
+    # Take-profit that falls through the day: [New York time from which it applies, share of the credit].
+    profit_targets: list = field(default_factory=lambda: [["09:30", 0.50], ["13:00", 0.35], ["14:30", 0.25]])
+    lock_profit_at: float = 0.40  # once a trade has made this share of its credit...
+    lock_profit_floor: float = 0.15  # ...close it if profit falls back to this share
+    losing_time_stop: str = "14:30"  # close any same-day trade still losing at this time
+
 
 @dataclass
 class FilterConfig:

@@ -90,6 +90,17 @@ same_day:
   entry_end: "13:30"
   close_by_time: "15:30"         # default; each strategy can change its own
   require_live_data: true
+  # Risk budget for all same-day trades together (enforced by the Risk Desk)
+  max_risk_per_trade_pct: 0.01   # of equity (below the normal per-trade cap)
+  max_trades_per_day: 3
+  max_open: 2
+  daily_loss_limit_pct: 0.02     # no new same-day trades today once same-day losses reach this
+  skip_dates: []                 # e.g. ["2026-11-04"]: Fed, CPI, jobs-report days
+  # Profit and loss rules (on top of the strategy's stop, strike guard and close-by time)
+  profit_targets: [["09:30", 0.50], ["13:00", 0.35], ["14:30", 0.25]]  # take profit, falling through the day
+  lock_profit_at: 0.40           # once up 40% of the credit...
+  lock_profit_floor: 0.15        # ...close if profit falls back to 15%
+  losing_time_stop: "14:30"      # close any same-day trade still losing at this time
 
 # More strategies beyond the five above (usually added from the dashboard instead), e.g.:
 # custom_strategies:

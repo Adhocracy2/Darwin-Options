@@ -151,7 +151,9 @@ experiment log shows steady, honest progress.
 
 - [ ] More, less-correlated tickers (QQQ, IWM; GLD, TLT, XLE) and index options (XSP/SPX).
 - [ ] Raise the 2-per-ticker limit only if tests show it's safe.
-- [ ] 0DTE strategies once live quotes and intraday history are available.
+- [ ] 0DTE: the rules are built (entry window, own risk budget, falling take-profit, profit lock, 14:30 losing
+  stop, 15:30 close, event days) but untested. Needs live quotes (OPRA) to trade and intraday option history to
+  backtest; start with one small 0DTE condor on paper and tune the targets from results.
 - [ ] **Live-trading readiness checklist**: enough paper trades, model calibrated, drawdown within
   limits, all systems monitored, a login on the dashboard, both live switches set by the owner.
 

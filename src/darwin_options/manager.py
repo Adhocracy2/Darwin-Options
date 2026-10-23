@@ -13,6 +13,7 @@ from datetime import date, datetime
 from .config import Config
 from .models import MULTIPLIER, OptionQuote, Position
 from . import analysis, clock
+from .strategies import sameday
 
 
 @dataclass
@@ -26,6 +27,7 @@ class ExitAction:
 class PositionManager:
     def __init__(self, cfg: Config):
         self.cfg = cfg
+        self._peak: dict[str, float] = {}  # same-day positions: best profit so far, as a share of the credit
 
     def _short_leg_risk(self, pos: Position, quotes: dict[str, OptionQuote], spot: float,
                         today: date, now: datetime | None = None) -> tuple[str, bool] | None:
@@ -71,6 +73,9 @@ class PositionManager:
             return None
         pnl = pos.unrealized_pnl({s: quotes[s].mid for s in all_open})
         credit = pos.entry_credit()
+        if credit > 0 and m.close_by_time is not None and all(l.contract.dte(today) == 0 for l in pos.open_legs):
+            if action := self._same_day(pos, pnl, credit, all_open, now or clock.now_ny()):
+                return action
         if credit > 0 and pnl >= m.take_profit_pct * credit:
             return ExitAction(pos.id, all_open, f"take profit: {pnl:.0f} of {credit:.0f}")
         if credit > 0 and -pnl >= m.stop_loss_mult * credit:
@@ -80,6 +85,23 @@ class PositionManager:
             return ExitAction(pos.id, all_open, f"take profit: {pnl:.0f} on {debit:.0f} debit")
         if debit > 0 and -pnl >= m.debit_stop_loss_pct * debit:
             return ExitAction(pos.id, all_open, f"stop loss: {pnl:.0f} on {debit:.0f} debit")
+        return None
+
+    def _same_day(self, pos: Position, pnl: float, credit: float, legs: list[str], now: datetime) -> ExitAction | None:
+        """0DTE profit and loss rules (same_day in config): a take-profit that falls through the day,
+        a profit lock, and closing anything still losing late in the day. The strategy's stop loss,
+        strike guard and close-by time still apply."""
+        sd = self.cfg.same_day
+        share = pnl / credit
+        peak = max(self._peak.get(pos.id, share), share)
+        self._peak[pos.id] = peak
+        target = sameday.profit_target(sd, now)
+        if share >= target:
+            return ExitAction(pos.id, legs, f"same-day take profit: {share:.0%} of credit (target {target:.0%} at {now:%H:%M})")
+        if peak >= sd.lock_profit_at and share <= sd.lock_profit_floor:
+            return ExitAction(pos.id, legs, f"same-day profit lock: was {peak:.0%}, now {share:.0%} of credit")
+        if pnl < 0 and now.time() >= clock.parse_hhmm(sd.losing_time_stop):
+            return ExitAction(pos.id, legs, f"same-day time stop: still losing {pnl:.0f} at {sd.losing_time_stop}", True)
         return None
 
     def _leaps_call(self, pos: Position, quotes, spot, today) -> ExitAction | None:
