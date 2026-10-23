@@ -189,3 +189,5 @@ button.link:disabled { opacity: 0.5; cursor: not-allowed; }
 .outlook-bar .th, .outlook-legend .th { background: var(--warning); }
 .outlook-bar .sl, .outlook-legend .sl { background: var(--critical); }
 .warn-text { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--text-primary); padding: 1px 5px; border-radius: 4px; }
+.prices-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
+.prices-row .btn { padding: 4px 10px; font-size: 12px; }

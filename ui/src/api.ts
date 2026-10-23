@@ -246,7 +246,7 @@ export const api = {
   saveSettings: (u: SettingsUpdate) => req<Settings>("/api/settings", "PUT", u),
   strategyPayoffs: () => req<StrategyPayoff[]>("/api/payoff/strategies"),
   payoff: (r: PayoffRequest) => req<Payoff>("/api/payoff", "POST", r),
-  positionPayoff: (id: string) => req<Payoff>(`/api/positions/${id}/payoff`),
+  positionPayoff: (id: string, fresh = false) => req<Payoff>(`/api/positions/${id}/payoff${fresh ? "?fresh=true" : ""}`),
 };
 
 export const usd = (n: number | null | undefined, digits = 0) =>

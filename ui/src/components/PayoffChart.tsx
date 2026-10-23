@@ -139,33 +139,61 @@ export function PayoffChart({ p, height = 240 }: { p: Payoff; height?: number })
 }
 
 /** Loads a payoff and renders it, with loading and error states. With `refreshMs` it reloads on
- *  that interval and keeps showing the last result meanwhile. Open positions also get a summary. */
-export function PayoffPanel({ load, height, refreshMs }: { load: () => Promise<Payoff>; height?: number; refreshMs?: number }) {
+ *  that interval and keeps showing the last result meanwhile. Open positions also get a summary.
+ *  `canFetchLatest` adds a button that asks IBKR for new prices instead of using saved ones. */
+export function PayoffPanel({ load, height, refreshMs, canFetchLatest }: {
+  load: (fresh?: boolean) => Promise<Payoff>; height?: number; refreshMs?: number; canFetchLatest?: boolean;
+}) {
   const [p, setP] = useState<Payoff | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [at, setAt] = useState<Date | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const alive = useRef(true);
+  const get = (fresh = false) => load(fresh)
+    .then((v) => {
+      if (!alive.current) return v;
+      setP(v); setErr(null); setAt(new Date());
+      return v;
+    })
+    .catch((e) => { if (alive.current) setErr(e instanceof Error ? e.message : String(e)); return null; });
   useEffect(() => {
-    let alive = true;
-    const get = () => load()
-      .then((v) => { if (alive) { setP(v); setErr(null); setAt(new Date()); } })
-      .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)));
+    alive.current = true;
     get();
-    const t = refreshMs ? setInterval(get, refreshMs) : undefined;
-    return () => { alive = false; if (t) clearInterval(t); };
+    const t = refreshMs ? setInterval(() => get(), refreshMs) : undefined;
+    return () => { alive.current = false; if (t) clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const fetchLatest = async () => {
+    setFetching(true); setNote(null);
+    const asked = Date.now();
+    const v = await get(true);
+    if (alive.current) {
+      setFetching(false);
+      // IBKR had nothing newer (market closed, gateway down): say so instead of looking stuck
+      if (v?.prices_at && new Date(v.prices_at).getTime() < asked - 60_000) setNote("IB had no newer prices.");
+    }
+  };
   if (err && !p) return <p className="neg small">Couldn't load payoff: {err}</p>;
   if (!p) return <p className="muted small">Loading payoff…</p>;
   return (
     <>
       <PayoffChart p={p} height={height} />
       {p.summary && <TradeSummary s={p.summary} underlying={p.underlying ?? ""} />}
-      {(p.prices_at || (refreshMs && at)) && (
-        <p className="muted small payoff-source">
-          {p.prices_at && <PricesAt ts={p.prices_at} />}
-          {refreshMs && at && <> · checked {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>}
-          {err ? ` · last refresh failed: ${err}` : ""}
-        </p>
+      {(p.prices_at || (refreshMs && at) || canFetchLatest) && (
+        <div className="prices-row small">
+          <span className="muted">
+            {p.prices_at && <PricesAt ts={p.prices_at} />}
+            {refreshMs && at && <> · checked {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>}
+            {note && <> · {note}</>}
+            {err ? ` · last refresh failed: ${err}` : ""}
+          </span>
+          {canFetchLatest && (
+            <button type="button" className="btn secondary" disabled={fetching} onClick={fetchLatest}>
+              {fetching ? "Getting prices…" : "Get latest prices"}
+            </button>
+          )}
+        </div>
       )}
     </>
   );

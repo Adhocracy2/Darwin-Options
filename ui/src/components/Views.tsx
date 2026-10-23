@@ -95,7 +95,7 @@ export function Positions({ open, closed, onChange }: { open: Position[]; closed
               </tr>
               {shown === p.id && (
                 <ExpandRow cols={6}>
-                  <PayoffPanel load={() => api.positionPayoff(p.id)} refreshMs={60_000} />
+                  <PayoffPanel load={(fresh) => api.positionPayoff(p.id, fresh)} refreshMs={60_000} canFetchLatest />
                   <p className="muted small payoff-source">Whole position, including anything already realised. Commissions to close not included.</p>
                 </ExpandRow>
               )}

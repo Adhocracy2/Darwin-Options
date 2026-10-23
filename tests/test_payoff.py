@@ -176,3 +176,13 @@ def test_dashboard_prefers_fresh_saved_prices(engine, monkeypatch):
     engine.cfg.record.dashboard_max_age_s = 360
     pp = client.get(f"/api/positions/{pos['id']}/payoff").json()
     assert asked == []
+    # "Get latest prices": asks the market even when saved prices are fresh
+    monkeypatch.setattr(app_mod, "us_market_open", lambda: True)
+    for sym in syms:
+        rec.now = lambda: ts(1)
+        rec.quotes([OptionQuote(OptionContract.from_occ(sym), bid=9.0, ask=9.2, iv=0.2)])
+    asked.clear()
+    assert client.get(f"/api/positions/{pos['id']}/payoff").json()["summary"]["legs"][0]["mark"] == pytest.approx(9.1)
+    assert asked == []
+    pp = client.get(f"/api/positions/{pos['id']}/payoff?fresh=true").json()
+    assert asked and pp["summary"]["legs"][0]["mark"] != pytest.approx(9.1)
