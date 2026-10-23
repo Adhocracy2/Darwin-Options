@@ -18,14 +18,24 @@ const PALETTE: Palette = {
   chair: "#343a40", skin: ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#ffdbac"], roughness: 0.6,
 };
 
-const HOME = { pos: new THREE.Vector3(2, 27, 31), target: new THREE.Vector3(2, 0, 1.2) }; // centred on the circle
+const HOME = { pos: new THREE.Vector3(0, 28, 42), target: new THREE.Vector3(0, 5.5, 0.5) }; // centred on the circle
 
-// Where each platform sits on the ring (degrees, 0 = right, 90 = back): eight even slots. Market
-// Data, Trading and Portfolio face IB Gateway on the right; the Supervisor sits at the back left.
+// Three layers of planes: the six teams that run every cycle on the floor (bottom ring), the
+// engine's circle floating above them (middle), and a top ring for Supervisor, Review and the
+// News Desk. Angles in degrees: 0 = right (towards IB Gateway), 90 = back.
+const MID_Y = 7; // height of the engine's circle (high enough to clear the floor teams behind it)
+const TOP_Y = 12.5; // height of the top ring
 const ANGLE: Record<TeamId | "supervisor", number> = {
-  data: 22.5, scanner: 67.5, risk: 112.5, supervisor: 157.5, review: 202.5, exits: 247.5, portfolio: 292.5, trading: 337.5,
+  data: 0, scanner: 60, risk: 120, exits: 180, portfolio: 240, trading: 300, // nothing right behind the circle
+  supervisor: 90, review: 210, news: 330,
 };
-const ringPos = (deg: number) => new THREE.Vector3(Math.cos((deg * Math.PI) / 180) * 10.5, 0, -Math.sin((deg * Math.PI) / 180) * 7.5);
+const TOP = new Set<string>(["supervisor", "review", "news"]);
+const BOTTOM_R = { x: 10.5, z: 7.5 }, TOP_R = { x: 8.5, z: 6 };
+const posOf = (id: string) => {
+  const top = TOP.has(id), r = top ? TOP_R : BOTTOM_R, a = (ANGLE[id as TeamId] * Math.PI) / 180;
+  return new THREE.Vector3(Math.cos(a) * r.x, top ? TOP_Y : 0, -Math.sin(a) * r.z);
+};
+const BRAIN = new THREE.Vector3(0, MID_Y + 1.6, -0.3); // where every team's link meets the engine
 // Outside systems, drawn small just beyond the ring on the right (SYS = their scale).
 const SYS = 0.55;
 const GATEWAY = new THREE.Vector3(16.2, 0, 0.6);
@@ -33,7 +43,7 @@ const IBKR = new THREE.Vector3(20.2, 1.6, -4.6);
 const ROUTER = new THREE.Vector3(18.2, 0, 4.4);
 const ISP = new THREE.Vector3(21.4, 0, 1.4);
 const LINE: Record<LineState, string> = { ok: "#51cf66", down: "#ff6b6b", unknown: "#5c677d" };
-const SUPERVISOR = ringPos(ANGLE.supervisor);
+const SUPERVISOR = posOf("supervisor");
 const PLAZA_R = 4.2; // radius of the engine's circle
 
 function gatewayBuilding() {
@@ -169,7 +179,7 @@ function build(stage: Stage, world: World) {
   key.position.set(8, 16, 10);
   root.add(key);
   const glow = new THREE.PointLight("#5ad8ff", 30, 14, 1.6);
-  glow.position.set(0, 1.5, 0);
+  glow.position.set(0, MID_Y + 1.5, 0);
   root.add(glow);
 
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({ color: "#0d1426", roughness: 1 }));
@@ -179,6 +189,23 @@ function build(stage: Stage, world: World) {
   const grid = new THREE.GridHelper(110, 110, "#1c2a4a", "#141f38");
   grid.position.y = -0.29;
   root.add(grid);
+  // top ring: a faint see-through plane with a glowing rim; a light column joins the three layers
+  const topPlane = new THREE.Mesh(new THREE.RingGeometry(3.2, 12.5, 96, 1),
+    new THREE.MeshBasicMaterial({ color: "#3b5bdb", transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }));
+  topPlane.rotation.x = -Math.PI / 2;
+  topPlane.scale.set(1, 0.72, 1); // flattened like the rings
+  topPlane.position.y = TOP_Y - 0.32;
+  root.add(topPlane);
+  for (const r of [3.2, 12.5]) {
+    const rim = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, r, r * 0.72).getPoints(160).map((p) => new THREE.Vector3(p.x, TOP_Y - 0.3, p.y))),
+      new THREE.LineBasicMaterial({ color: "#5c7cfa", transparent: true, opacity: 0.5 }));
+    root.add(rim);
+  }
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, TOP_Y, 24, 1, true),
+    new THREE.MeshBasicMaterial({ color: "#5ad8ff", transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  column.position.y = TOP_Y / 2 - 0.3;
+  root.add(column);
   const roadMat = new THREE.MeshStandardMaterial({ color: "#1b2540", roughness: 0.9 });
   const road = (from: THREE.Vector3, to: THREE.Vector3, width = 1.1) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(width, 0.04, from.distanceTo(to)), roadMat);
@@ -194,7 +221,7 @@ function build(stage: Stage, world: World) {
 
   // ---- teams on the ring
   for (const team of world.teams) {
-    const c = ringPos(ANGLE[team.id]);
+    const c = posOf(team.id);
     centers.set(team.id, c);
     const block = makeTeamBlock(team, {
       palette: PALETTE,
@@ -206,18 +233,23 @@ function build(stage: Stage, world: World) {
     block.group.rotation.y = Math.PI / 4;
     root.add(block.group);
     blocks.set(team.id, block);
-    road(c.clone().multiplyScalar(PLAZA_R / c.length()), c.clone().multiplyScalar(1 - 2.2 / c.length()));
+    const top = TOP.has(team.id);
+    if (!top) road(c.clone().multiplyScalar(1.2 / c.length()), c.clone().multiplyScalar(1 - 2.2 / c.length()));
 
-    const f = makeFlow(c.clone().setY(1.4), new THREE.Vector3(0, 1.6, -0.3), { color: team.color, height: 3.2 });
+    const f = makeFlow(c.clone().setY(c.y + 1.4), BRAIN, { color: team.color, height: top ? 1.0 : 2.4 });
     root.add(f.group);
     teamFlows.push(f);
 
-    const card = makeCard(team, "cc-card", stage, (t) => cardHtml(t));
+    // top-ring teams get small tags (name + number); click for the full panel
+    const card = top
+      ? makeCard(team, "cc-card mini", stage, (t) => cardHtml(t, { rows: 0 }))
+      : makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1 })); // full details on click
     const out = c.clone().normalize();
     // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
     // so nothing covers the middle (the engine and its summary)
-    if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
-    else card.obj.position.copy(c).add(new THREE.Vector3(out.x * 1.5, 3.4, out.z * 1.2));
+    if (top) card.obj.position.copy(c).add(new THREE.Vector3(0, 2.3, 0)); // just above its platform
+    else if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
+    else card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.6, 0, -1.2)); // beside, at floor level, clear of the circle
     root.add(card.obj);
     cards.set(team.id, card);
   }
@@ -281,8 +313,9 @@ function build(stage: Stage, world: World) {
     });
     hudTex.needsUpdate = true;
   };
+  engine.position.y = MID_Y; // the middle layer
   root.add(engine);
-  centers.set("engine", new THREE.Vector3(0, 0.5, 0));
+  centers.set("engine", new THREE.Vector3(0, MID_Y + 0.5, 0));
 
   // ---- the Supervisor: its own small platform on the ring, like the teams', with one desk
   const supTeam = (busy: boolean): Team => ({
@@ -300,9 +333,8 @@ function build(stage: Stage, world: World) {
   supBlock.group.rotation.y = Math.PI / 4;
   root.add(supBlock.group);
   blocks.set("supervisor", supBlock);
-  centers.set("supervisor", SUPERVISOR.clone().setY(0.6));
-  road(SUPERVISOR.clone().multiplyScalar(PLAZA_R / SUPERVISOR.length()), SUPERVISOR.clone().multiplyScalar(1 - 1.6 / SUPERVISOR.length()));
-  const supFlow = makeFlow(SUPERVISOR.clone().setY(1.4), new THREE.Vector3(0, 1.6, -0.3), { color: "#ffd43b", height: 3.2 });
+  centers.set("supervisor", SUPERVISOR.clone().setY(SUPERVISOR.y + 0.6));
+  const supFlow = makeFlow(SUPERVISOR.clone().setY(SUPERVISOR.y + 1.4), BRAIN, { color: "#ffd43b", height: 1.0 });
   root.add(supFlow.group);
   let supBusy = false;
 
@@ -433,7 +465,7 @@ function build(stage: Stage, world: World) {
 export default function CommandCenter(p: ConceptProps) {
   const ref = useScene(build, (el) => new Stage(el, {
     background: "#0a0f1e", fog: { color: "#0a0f1e", near: 40, far: 95 }, toneMapping: true,
-    camera: { position: [2, 36, 42], target: [2, 0, 1.2], fov: 34 },
+    camera: { position: [0, 28, 56], target: [0, 5.8, 0.5], fov: 34 },
     limits: { minDistance: 6, maxDistance: 70, maxPolarAngle: Math.PI * 0.42 },
   }), p.world, p.selected, p.onSelect, p.onHover, p.busy);
   return <div ref={ref} className="scene3d theme-cc" />;

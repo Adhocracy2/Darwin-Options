@@ -127,3 +127,12 @@
 .cc-card.mini .c-big span { display: none; }
 .cc-card.mini .c-alert { margin-top: 4px; padding: 2px 6px; font-size: 10px; }
 
+
+/* compact team cards (3D office has three layers, so cards stay small; click for details) */
+.cc-card.compact { width: 168px; padding: 7px 10px; }
+.cc-card.compact .c-head { font-size: 10px; }
+.cc-card.compact .c-big { margin: 2px 0 3px; }
+.cc-card.compact .c-big b { font-size: 19px; }
+.cc-card.compact .c-big span { font-size: 10px; }
+.cc-card.compact .c-row { font-size: 10px; }
+.cc-card.compact .c-alert { margin-top: 4px; padding: 2px 6px; font-size: 10px; }

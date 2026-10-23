@@ -25,10 +25,10 @@ export type Team = {
   link?: { href: string; label: string };
 };
 
-export type TeamId = "data" | "scanner" | "risk" | "trading" | "portfolio" | "exits" | "review";
+export type TeamId = "data" | "scanner" | "risk" | "trading" | "portfolio" | "exits" | "review" | "news";
 
 /** Pipeline order: prices in, ideas, checks, orders, holdings, exits, lessons. */
-export const ORDER: TeamId[] = ["data", "scanner", "risk", "trading", "portfolio", "exits", "review"];
+export const ORDER: TeamId[] = ["data", "scanner", "risk", "trading", "portfolio", "exits", "review", "news"];
 
 export type Brain = {
   mode: string;
@@ -231,6 +231,17 @@ export function buildWorld(d: Inputs): World {
         { label: "Win rate", value: d.perf?.overall.win_rate != null ? `${Math.round(d.perf.overall.win_rate * 100)}%` : "–" },
         { label: "Realized", value: signed(d.perf?.overall.total_pnl ?? 0), tone: (d.perf?.overall.total_pnl ?? 0) >= 0 ? "pos" : "neg" },
       ],
+    },
+    {
+      // placeholder team: desks are set up, the work is assigned later
+      id: "news", name: "News Desk", color: "#20c997",
+      job: "Will watch the news, earnings and ex-dividend dates. Not tasked yet.",
+      agents: [
+        { name: "Headlines", role: "Market news (not tasked yet)", state: "idle" },
+        { name: "Calendar", role: "Earnings and ex-dividend dates (not tasked yet)", state: "idle" },
+      ],
+      headline: { value: "–", label: "not tasked yet" },
+      rows: [{ label: "Status", value: "Desks ready" }],
     },
   ];
 
