@@ -17,6 +17,7 @@ from ..manager import ExitAction
 from .. import analysis, pricing
 from .. import payoff as payoff_mod
 from ..models import MULTIPLIER, OptionContract
+from .. import recorder
 from ..report import performance
 from ..review import review as review_trades
 from ..strategies import instances as strategy_instances, type_of
@@ -95,14 +96,24 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         underlying = contracts[0].underlying
         today = engine.md.today()
         spot = engine.md.spot(underlying)
-        quotes = engine.md.quotes([c.symbol for c in contracts])
+        quotes, quotes_from = _quotes_or_saved([c.symbol for c in contracts])
         ivs = payoff_mod.leg_ivs(contracts, quotes, spot, today, cfg.risk_free_rate)
         known = {i.id for i in strategy_instances(engine.cfg)}
         exit_dte = engine.cfg.management.for_strategy(strategy).close_at_dte if strategy in known else 0
         pl = [payoff_mod.PayoffLeg(c, q, ivs[c.symbol]) for c, (_, q) in zip(contracts, legs)]
         out = payoff_mod.payoff(pl, entry_credit, spot, today, cfg.risk_free_rate, exit_dte)
         out["underlying"] = underlying
+        out["quotes_from"] = quotes_from
         return out
+
+    def _quotes_or_saved(symbols: list[str]):
+        """Live quotes, with the last saved ones for any leg IBKR has no price for (e.g. market
+        closed). Returns (quotes, UTC time of the oldest saved quote used, or None if all live)."""
+        quotes = engine.md.quotes(symbols)
+        missing = [s for s in symbols if s not in quotes]
+        saved = recorder.last_quotes(cfg.record.path, missing) if cfg.record.enabled else {}
+        quotes.update({s: q for s, (_, q) in saved.items()})
+        return quotes, min((ts for ts, _ in saved.values()), default=None)
 
     @app.post("/api/payoff")
     def payoff_for_legs(body: dict = Body(...)):
@@ -122,6 +133,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         if type_of(engine.cfg, p.strategy) == "leaps_call":
             return None
         contracts = [OptionContract.from_occ(l.symbol) for l in p.open_legs]
+        if any(c.symbol not in quotes for c in contracts):
+            return None  # no price to read volatility from: don't project on a guess
         today = engine.md.today()
         ivs = payoff_mod.leg_ivs(contracts, quotes, spot, today, cfg.risk_free_rate)
         first = min(c.expiry for c in contracts)
@@ -143,7 +156,7 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         credit = -sum(l.qty * l.entry_price for l in p.open_legs) * MULTIPLIER + p.realized_pnl()
         out = _payoff(legs, credit, p.strategy)
         try:
-            quotes = engine.md.quotes([s for s, _ in legs])
+            quotes, _ = _quotes_or_saved([s for s, _ in legs])
             known = {i.id for i in strategy_instances(engine.cfg)}
             mgmt = engine.cfg.management.for_strategy(p.strategy if p.strategy in known else "")
             out["summary"] = payoff_mod.position_summary(

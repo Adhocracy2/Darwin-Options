@@ -128,6 +128,9 @@ deploys to AI1 once its runner is online, so only push tested work there.
   5-minute stop timeout (trader SIGKILLed mid-cycle). Now: only out-of-the-money strikes (LEAPS
   chains excepted), chains reused for `ibkr.chain_cache_s` (600s; same-day never), and an
   unanswered request raises `GatewayNotAnswering` and skips the rest of the cycle.
+- **Stock snapshots take ~11s on IBKR** (delayed data: it waits for fields that never arrive). `spot()` keeps one
+  streaming subscription per ticker instead (restarted after a reconnect or 5 min of silence in market hours);
+  daily closes are cached for an hour. Payoff panels fall back to the last saved quotes when IBKR has none.
 - AI1 runs the **desktop IB Gateway** (~/Jts, logged in by hand, paper port 4002), not the Docker
   one in deploy/ib-gateway. Its auto-restart/log-off time and memory (-Xmx768m) matter.
 

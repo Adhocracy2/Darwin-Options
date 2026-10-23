@@ -74,3 +74,20 @@ def test_recording_failure_never_breaks_trading(cfg):
     rec = Recorder(cfg.record.path)
     rec._db.close()  # every write now fails
     assert RecordingMarketData(md, rec).spot("SPY") == 500
+
+
+def test_last_quotes_returns_newest_priced_quote(tmp_path):
+    import pytest
+    from darwin_options.recorder import Recorder, last_quotes
+    from darwin_options.models import OptionContract, OptionQuote
+    rec = Recorder(str(tmp_path / "md.db"))
+    c = OptionContract.from_occ("SPY261127C00787000")
+    rec.now = lambda: "2026-10-22T19:00:00+00:00"
+    rec.quotes([OptionQuote(c, bid=4.6, ask=4.8, iv=0.12)])
+    rec.now = lambda: "2026-10-22T21:00:00+00:00"
+    rec.quotes([OptionQuote(c, bid=0.0, ask=0.0)])  # after the close: no price, skipped
+    got = last_quotes(str(tmp_path / "md.db"), [c.symbol, "SPY261127C00999000"])
+    assert list(got) == [c.symbol]
+    ts, q = got[c.symbol]
+    assert ts.startswith("2026-10-22T19") and q.mid == pytest.approx(4.7) and q.iv == 0.12
+    assert last_quotes(str(tmp_path / "none.db"), [c.symbol]) == {}

@@ -1,6 +1,6 @@
 """Full trading cycles through the IBKR session, market data and broker, against a fake
 IB gateway backed by the synthetic market. Exercises the background event loop too."""
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -74,6 +74,16 @@ class FakeIB:
                 g = SimpleNamespace(impliedVol=q.iv, delta=q.delta, gamma=q.gamma, theta=q.theta, vega=q.vega)
                 out.append(SimpleNamespace(bid=q.bid, ask=q.ask, modelGreeks=g))
         return out
+
+    def reqMktData(self, c, *_a):
+        """A streaming ticker: always shows the synthetic market's current price."""
+        self.streams = getattr(self, "streams", []) + [c.symbol]
+        md = self.md
+        return SimpleNamespace(contract=c, marketPrice=lambda: md.spot(c.symbol), last=None, close=None,
+                               time=datetime.now(timezone.utc))
+
+    def cancelMktData(self, c):
+        self.cancelled = getattr(self, "cancelled", []) + [c.symbol]
 
     async def reqHistoricalDataAsync(self, c, *_a, **_k):
         return [SimpleNamespace(close=x) for x in self.md.closes(c.symbol)]
@@ -351,3 +361,58 @@ def test_concurrent_requests_connect_once(cfg, monkeypatch):
     for t in threads:
         t.join(5)
     assert results == ["ok"] * 5 and len(connects) == 1
+
+
+def test_spot_streams_instead_of_snapshots(ib_engine):
+    """A stock snapshot takes ~11s on IBKR; the price comes from one stream per ticker instead."""
+    eng, fake, md = ib_engine
+    _count_requests(fake)
+    fake.streams = []
+    for _ in range(3):
+        assert eng.md.spot("SPY") == pytest.approx(md.spot("SPY"))
+    assert fake.streams == ["SPY"] and not fake.ticker_requests
+    # a new connection (after a reconnect) gets a new stream
+    eng.md.s.ib = FakeIB(md)
+    eng.md.s.ib.streams = []
+    eng.md.spot("SPY")
+    assert eng.md.s.ib.streams == ["SPY"]
+
+
+def test_spot_falls_back_to_a_snapshot(ib_engine, monkeypatch):
+    from darwin_options.data import ibkr as data_ibkr
+    eng, fake, md = ib_engine
+    monkeypatch.setattr(data_ibkr, "STREAM_FIRST_S", 0.1)
+    fake.reqMktData = lambda c, *_: SimpleNamespace(contract=c, marketPrice=lambda: float("nan"),
+                                                     last=None, close=None, time=None)
+    _count_requests(fake)
+    assert eng.md.spot("QQQ") == pytest.approx(md.spot("QQQ"))
+    assert len(fake.ticker_requests) == 1
+
+
+def test_stale_stream_restarts_during_market_hours(ib_engine, monkeypatch):
+    from darwin_options.data import ibkr as data_ibkr
+    eng, fake, md = ib_engine
+    eng.md.spot("SPY")
+    eng.md._streams["SPY"][1].time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    monkeypatch.setattr(data_ibkr, "_market_open", lambda: True)
+    fake.streams, fake.cancelled = [], []
+    eng.md.spot("SPY")
+    assert fake.cancelled == ["SPY"] and fake.streams == ["SPY"]
+
+
+def test_daily_closes_are_kept_for_an_hour(ib_engine, monkeypatch):
+    from darwin_options.data import ibkr as data_ibkr
+    eng, fake, md = ib_engine
+    calls = []
+    orig = fake.reqHistoricalDataAsync
+
+    async def counting(c, *a, **k):
+        calls.append(c.symbol)
+        return await orig(c, *a, **k)
+    fake.reqHistoricalDataAsync = counting
+    a = eng.md.closes("SPY")
+    a.append(0.0)  # callers can't change the cached list
+    assert eng.md.closes("SPY") == a[:-1] and calls == ["SPY"]
+    monkeypatch.setattr(data_ibkr, "CLOSES_CACHE_S", 0)
+    eng.md.closes("SPY")
+    assert calls == ["SPY", "SPY"]

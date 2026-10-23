@@ -14,10 +14,11 @@ the open-interest filter is skipped on IBKR. The bid/ask spread filter still app
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from ..broker.base import NY
 from ..ibkr import IBSession, num, parse_expiry
@@ -26,6 +27,19 @@ from .. import pricing
 from .base import enrich
 
 log = logging.getLogger(__name__)
+
+STREAM_FIRST_S = 3.0  # wait this long for a new price stream's first tick
+STREAM_STALE_S = 300
+CLOSES_CACHE_S = 3600  # restart a stream with no update for this long during market hours
+
+
+def _price(t) -> float | None:
+    return num(t.marketPrice()) or num(t.last) or num(t.close)
+
+
+def _market_open() -> bool:
+    now = datetime.now(NY)
+    return now.weekday() < 5 and (9, 30) <= (now.hour, now.minute) < (16, 0)
 
 
 def ticker_to_quote(contract: OptionContract, t) -> OptionQuote | None:
@@ -48,6 +62,8 @@ class IBKRMarketData:
         self.r = risk_free_rate
         self._stocks: dict[str, object] = {}
         self._chains: dict[tuple, tuple[float, Chain]] = {}
+        self._streams: dict[str, tuple[object, object]] = {}
+        self._closes: dict[tuple, tuple[float, list[float]]] = {}  # symbol -> (connection, streaming ticker)
 
     def today(self) -> date:
         return datetime.now(NY).date()
@@ -61,20 +77,54 @@ class IBKRMarketData:
         return self._stocks[symbol]
 
     def spot(self, symbol: str) -> float:
+        """Latest stock price from a streaming subscription kept open per ticker.
+
+        A one-off snapshot takes ~11s on IBKR (it waits for fields that never come on delayed
+        data), and every chain starts with a price. The stream answers at once after its first
+        tick. It belongs to one connection (`self.s.ib`), so it restarts after a reconnect, and
+        after STREAM_STALE_S with no update while the market is open. Falls back to a snapshot
+        if the stream hasn't priced within STREAM_FIRST_S."""
         async def go():
-            [t] = await self.s.ib.reqTickersAsync(await self._stock(symbol))
-            px = num(t.marketPrice()) or num(t.last) or num(t.close)
+            ib = self.s.ib
+            stream = self._streams.get(symbol)
+            fresh = stream is not None and stream[0] is ib and not self._stale(stream[1])
+            if not fresh:
+                if stream is not None and stream[0] is ib:
+                    ib.cancelMktData(stream[1].contract)
+                stream = (ib, ib.reqMktData(await self._stock(symbol), "", False, False))
+                self._streams[symbol] = stream
+            t = stream[1]
+            deadline = time.monotonic() + STREAM_FIRST_S
+            while (px := _price(t)) is None and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+            if px is None:
+                [snap] = await ib.reqTickersAsync(t.contract)
+                px = _price(snap)
             if px is None:
                 raise RuntimeError(f"no price for {symbol}; check IBKR market data permissions")
             return px
         return self.s.call(go)
 
+    def _stale(self, t) -> bool:
+        if t.time is None or not _market_open():
+            return False
+        return (datetime.now(timezone.utc) - t.time).total_seconds() > STREAM_STALE_S
+
     def closes(self, symbol: str, days: int = 60) -> list[float]:
+        """Daily closes, kept for CLOSES_CACHE_S: they change once a day and take ~3s to fetch."""
+        key = (symbol, days, self.today())
+        hit = self._closes.get(key)
+        if hit and time.monotonic() - hit[0] < CLOSES_CACHE_S:
+            return list(hit[1])
+
         async def go():
             bars = await self.s.ib.reqHistoricalDataAsync(
                 await self._stock(symbol), "", f"{int(days * 1.6) + 5} D", "1 day", "TRADES", True)
             return [float(b.close) for b in bars]
-        return self.s.call(go)
+        out = self.s.call(go)
+        self._closes = {k: v for k, v in self._closes.items() if k[-1] == key[-1]}
+        self._closes[key] = (time.monotonic(), out)
+        return list(out)
 
     async def _tickers(self, contracts: list) -> list:
         out = []

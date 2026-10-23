@@ -159,6 +159,12 @@ export function PayoffPanel({ load, height, refreshMs }: { load: () => Promise<P
   return (
     <>
       <PayoffChart p={p} height={height} />
+      {p.quotes_from && (
+        <p className="muted small payoff-source">
+          No live option prices right now (market closed?), so this uses the last saved prices
+          from {new Date(p.quotes_from).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}.
+        </p>
+      )}
       {p.summary && <TradeSummary s={p.summary} underlying={p.underlying ?? ""} />}
       {refreshMs && at && (
         <p className="muted small payoff-source">
