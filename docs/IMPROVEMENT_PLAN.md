@@ -85,12 +85,15 @@ Done when: in simulation and replay, predicted win rates land within a few point
 ## Phase 2: Historical data and backtesting (in parallel, 2-6 weeks)
 
 Owner:
-- [ ] Choose a source of end-of-day SPY option history and pay if needed. Start cheap
+- [x] SPY end-of-day history 2020-2023 from OptionsDX (owner downloaded, 2026-10-23), imported with
+  `darwin import-history` into `var/history/spy_eod.db`. OptionsDX also sells intraday files (15-min $5/year,
+  5-min $20, 1-min $50); the importer reads the same format, and intraday data fixes the missed-stops caveat.
+- [ ] (was) Choose a source of end-of-day SPY option history and pay if needed. Start cheap
   (OptionsDX), move to ORATS or ThetaData if results are promising; CBOE DataShop is the official
   but expensive option. Check current prices and terms.
 
 Build:
-- [ ] **Importer** that loads end-of-day chains (bid, ask, IV, Greeks, open interest, volume) into
+- [x] **Importer** that loads end-of-day chains (bid, ask, IV, Greeks, open interest, volume) into
   the same format as `var/marketdata.db`, so `darwin replay` runs on years of data, one step a day.
 - [ ] **Conservative backtest assumptions**: fills cross part of the bid/ask spread; because exits
   are only checked once a day, intraday stops are missed, so treat stop results as optimistic.

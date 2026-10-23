@@ -1,4 +1,4 @@
-"""Command line: darwin check | scan | run | loop | serve | positions | report | close | data | replay."""
+"""Command line: darwin check | scan | run | loop | serve | positions | report | close | data | replay | import-history."""
 from __future__ import annotations
 
 import argparse
@@ -108,6 +108,13 @@ def main(argv: list[str] | None = None) -> None:
     rp.add_argument("--from", dest="start", help="first day, YYYY-MM-DD (default: all)")
     rp.add_argument("--to", dest="end", help="last day, YYYY-MM-DD")
     rp.add_argument("--journal", default=None, help="journal file for the replay (default: a new file in var/replays)")
+    rp.add_argument("--data", default=None, help="market data to replay (default: the live recordings), e.g. var/history/spy_eod.db")
+    ih = sub.add_parser("import-history", help="import historical option data files into a history database")
+    ih.add_argument("paths", nargs="+", help="files or folders (OptionsDX .txt files or their .7z archives)")
+    ih.add_argument("--source", default="optionsdx", help="data source format (default: optionsdx)")
+    ih.add_argument("--db", default="var/history/market_history.db", help="history database to add to")
+    ih.add_argument("--max-dte", type=int, default=730, help="skip options expiring later than this (days)")
+    ih.add_argument("--strike-pct", type=float, default=0.40, help="skip strikes further than this from the price (0.40 = 40%%)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -144,7 +151,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "replay":
         from .replay import replay
 
-        print(json.dumps(replay(cfg, args.start, args.end, args.journal, log), indent=2, default=str))
+        print(json.dumps(replay(cfg, args.start, args.end, args.journal, log, args.data), indent=2, default=str))
+        return
+
+    if args.cmd == "import-history":  # files only; no broker connection needed
+        from .history import SOURCES, import_files, summary
+
+        if args.source not in SOURCES:
+            raise SystemExit(f"unknown source {args.source!r}; known: {', '.join(SOURCES)}")
+        out = import_files(args.paths, args.db, SOURCES[args.source](), args.max_dte, args.strike_pct)
+        print(json.dumps({"imported": out, "database": summary(args.db)}, indent=2, default=str))
         return
 
     if args.cmd == "review":  # reads the journal only; no broker connection needed

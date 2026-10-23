@@ -76,6 +76,12 @@ renamed. Don't reintroduce "flick" names.
   of a time; `replay.py` / `darwin replay` reruns the engine on it with the sim broker and a fresh
   journal under `var/replays/`. `darwin data` shows totals. Replays: daily limits use the real clock,
   so pilot is off in replays.
+- `history/`: importers for historical option data (plugins in `history.SOURCES`; first: `optionsdx`, which reads
+  the .txt files or their .7z archives). `darwin import-history FILES --db var/history/X.db` writes the live
+  recorder's format (+ an `imports` table so files aren't imported twice, + daily closes and realized vol);
+  `darwin replay --data var/history/X.db` replays it one step per quote time (daily for EOD files). On AI1:
+  `~/darwin/shared/var/history/spy_eod.db` = SPY end-of-day 2020-2023 from OptionsDX (owner downloaded).
+  EOD caveat: exits are checked once a day, so intraday stops are missed (results optimistic on stops).
 - `review.py`: trade review; suggests changes only with 20+ trades per group and ~2 standard errors.
 - `payoff.py`: payoff diagrams; `position_summary` (opened for, cost to close now, exit levels) shown under an
   open position's Payoff in the dashboard, with `analysis.outlook`: a path simulation to the planned exit using

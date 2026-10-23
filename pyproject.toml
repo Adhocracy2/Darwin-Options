@@ -14,6 +14,7 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "anthropic>=2.0,<3",  # the dashboard's Supervisor chat (Claude API)
+  "py7zr>=0.20",  # reading historical data archives (darwin import-history)
 ]
 
 [project.optional-dependencies]

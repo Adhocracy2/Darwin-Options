@@ -24,17 +24,19 @@ from .store import Store
 
 
 def replay(cfg: Config, start: str | None = None, end: str | None = None,
-           journal: str | None = None, log=None) -> dict:
+           journal: str | None = None, log=None, data: str | None = None) -> dict:
+    """`data`: a market-data file to replay instead of the live recordings, e.g. an imported
+    history database (`darwin import-history`)."""
     cfg = copy.deepcopy(cfg)
     cfg.mode, cfg.risk.pilot = "sim", False
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     cfg.db_path = journal or str(Path(cfg.db_path).parent / "replays" / f"replay-{stamp}.db")
     Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    md = ReplayMarketData(cfg.record.path)
+    md = ReplayMarketData(data or cfg.record.path)
     moments = md.cycles(date.fromisoformat(start) if start else None, date.fromisoformat(end) if end else None)
     if not moments:
-        return {"error": "no recorded cycles in that range", "recorded": cfg.record.path}
+        return {"error": "no recorded cycles in that range", "recorded": data or cfg.record.path}
     store = Store(cfg.db_path)
     broker = SimBroker(md, store, cfg.risk.capital or cfg.sim_starting_equity, cfg.execution.slippage_frac,
                        cfg.execution.commission_per_contract, always_open=True)
