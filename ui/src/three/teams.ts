@@ -370,6 +370,9 @@ export function buildWorld(d: Inputs): World {
     headline: { value: `${ok}/${checks.length}`, label: "systems OK" },
     rows: [
       { label: "Down", value: down.length ? down.join(", ") : "nothing", tone: down.length ? "neg" : "pos" },
+      // the six things Technology monitors
+      ...checks.map(([name, v]) => ({ label: name, value: v === true ? "OK" : v === false ? "Down" : "Unknown",
+                                       tone: v === true ? "pos" as const : v === false ? "neg" as const : undefined })),
       { label: "Version", value: s?.version ?? "–" },
     ],
     alert: down.length ? `${down.join(", ")} down` : undefined,

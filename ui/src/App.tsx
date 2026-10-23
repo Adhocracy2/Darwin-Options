@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Candidate, Event, Performance, Position, Snapshot, Status } from "./api";
 import { api } from "./api";
+import logoDark from "./assets/logo-dark.png";
+import logoLight from "./assets/logo-light.png";
 import { StrategiesView } from "./components/StrategiesView";
 import { Journal, Overview, PerformanceView, Positions, Scanner } from "./components/Views";
 
@@ -60,7 +62,10 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>Darwin Options</h1>
+        <h1 className="logo">
+          <img className="logo-light" src={logoLight} alt="Darwin Options" />
+          <img className="logo-dark" src={logoDark} alt="Darwin Options" />
+        </h1>
         <div className="badges">
           {status && <>
             <span className={`badge ${status.mode === "live" ? "live" : ""}`}>{brokerLabel(status)}</span>
