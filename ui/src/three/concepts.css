@@ -110,3 +110,10 @@
 .chat-input button:disabled { opacity: 0.4; cursor: default; }
 .chat-clear { align-self: flex-start; margin-top: 8px; border: 0; background: none; color: var(--c3-muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0; }
 .chat-clear:hover { color: var(--c3-text); }
+
+/* outside links on a card: shown while the card (or its 3D object) is hovered */
+.c-link { display: none; margin-top: 8px; padding: 6px 9px; border-radius: 7px; background: rgba(255, 135, 135, 0.14); border: 1px solid rgba(255, 135, 135, 0.5); color: #ffc9c9; font-size: 12px; font-weight: 600; text-align: center; text-decoration: none; }
+.cc-card:hover .c-link, .cc-card.hover .c-link, .cc-card.selected .c-link { display: block; }
+.c-link:hover { background: rgba(255, 135, 135, 0.28); color: #fff; }
+.c3-link { display: inline-block; margin: 0 0 12px; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--c3-line); color: var(--c3-accent); text-decoration: none; font-weight: 600; }
+.c3-link:hover { border-color: var(--c3-accent); }

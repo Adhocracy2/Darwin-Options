@@ -180,7 +180,10 @@ export function makeCard(team: Team, className: string, stage: Stage, render: (t
   el.className = className;
   el.style.pointerEvents = "auto";
   el.innerHTML = render(team);
-  el.addEventListener("click", () => stage.onPick(team.id));
+  el.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("a")) return; // a link opens its page, not the panel
+    stage.onPick(team.id);
+  });
   el.addEventListener("pointerenter", () => stage.onHover(team.id));
   el.addEventListener("pointerleave", () => stage.onHover(null));
   const obj = new CSS2DObject(el);
@@ -195,7 +198,8 @@ export function cardHtml(t: Team, opts: { rows?: number; step?: number } = {}) {
     `<div class="c-row"><span>${esc(r.label)}</span><b class="${r.tone ?? ""}">${esc(r.value)}</b></div>`).join("");
   return `<div class="c-head"><i style="background:${t.color}"></i>${opts.step ? `<span class="c-step">${opts.step}</span>` : ""}${esc(t.name)}</div>
     <div class="c-big"><b>${esc(t.headline.value)}</b><span>${esc(t.headline.label)}</span></div>
-    ${rows}${t.alert ? `<div class="c-alert">${esc(t.alert)}</div>` : ""}`;
+    ${rows}${t.alert ? `<div class="c-alert">${esc(t.alert)}</div>` : ""}
+    ${t.link ? `<a class="c-link" href="${esc(t.link.href)}" target="_blank" rel="noopener noreferrer">${esc(t.link.label)} ↗</a>` : ""}`;
 }
 
 /** Glowing particle sphere: the engine that runs every cycle. */

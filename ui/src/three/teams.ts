@@ -21,6 +21,8 @@ export type Team = {
   rows: { label: string; value: string; tone?: "pos" | "neg" }[];
   /** Short attention pill, e.g. "153 blocked". */
   alert?: string;
+  /** Optional outside link, shown on hover (e.g. IBKR's web login). */
+  link?: { href: string; label: string };
 };
 
 export type TeamId = "data" | "scanner" | "risk" | "trading" | "portfolio" | "exits" | "review";
@@ -262,6 +264,7 @@ export function buildWorld(d: Inputs): World {
         { label: "US market", value: marketOpen ? "Open" : "Closed" },
       ],
       alert: ibkrUp === false ? "IBKR link lost" : broken.length ? `Farm down: ${broken.join(", ")}` : undefined,
+      link: { href: "https://www.interactivebrokers.com.au/sso/Login", label: "Open IBKR web login" },
     },
     {
       id: "engine", name: "The Engine", color: "#5ad8ff",

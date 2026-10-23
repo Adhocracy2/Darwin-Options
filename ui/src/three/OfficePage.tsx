@@ -45,6 +45,7 @@ function Details({ team, onClose }: { team: Team | SystemInfo; onClose: () => vo
       <p className="c3-job">{team.job}</p>
       <div className="c3-big"><b>{team.headline.value}</b> {team.headline.label}</div>
       {team.alert && <div className="c3-alert">{team.alert}</div>}
+      {team.link && <a className="c3-link" href={team.link.href} target="_blank" rel="noopener noreferrer">{team.link.label} ↗</a>}
       <dl>{team.rows.map((r) => <div key={r.label}><dt>{r.label}</dt><dd className={r.tone}>{r.value}</dd></div>)}</dl>
       {team.agents.length > 0 && <h4>At the desks ({team.agents.length})</h4>}
       <ul className="c3-agents">
