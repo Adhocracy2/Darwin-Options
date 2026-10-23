@@ -70,7 +70,7 @@ export default function OfficePage() {
   const [burst, setBurst] = useState<{ ids: string[]; n: number } | null>(null);
   const onTools = useCallback((tools: string[]) => {
     const TEAMS: Record<string, string[]> = {
-      get_overview: ["data", "scanner", "risk", "portfolio"], get_positions: ["portfolio"], get_position_detail: ["portfolio", "exits"],
+      get_overview: ["data", "scanner", "risk", "portfolio", "technology"], get_positions: ["portfolio"], get_position_detail: ["portfolio", "exits"],
       get_last_scan: ["scanner", "risk"], get_recent_events: ["trading", "exits"], get_risk: ["risk"], get_settings: ["scanner"],
       get_market_data: ["data"],
     };

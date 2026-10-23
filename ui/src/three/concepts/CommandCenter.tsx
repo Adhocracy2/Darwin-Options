@@ -27,9 +27,9 @@ const MID_Y = 7; // height of the engine's circle (high enough to clear the floo
 const TOP_Y = 12.5; // height of the top ring
 const ANGLE: Record<TeamId | "supervisor", number> = {
   data: 0, scanner: 60, risk: 120, exits: 180, portfolio: 240, trading: 300, // nothing right behind the circle
-  supervisor: 90, review: 210, news: 330,
+  supervisor: 135, technology: 45, review: 225, news: 315, // Technology sits on the side facing the infrastructure
 };
-const TOP = new Set<string>(["supervisor", "review", "news"]);
+const TOP = new Set<string>(["supervisor", "review", "news", "technology"]);
 const BOTTOM_R = { x: 10.5, z: 7.5 }, TOP_R = { x: 8.5, z: 6 };
 const posOf = (id: string) => {
   const top = TOP.has(id), r = top ? TOP_R : BOTTOM_R, a = (ANGLE[id as TeamId] * Math.PI) / 180;
@@ -426,6 +426,16 @@ function build(stage: Stage, world: World) {
   const linkDataGw = statusLine(at("data").setY(0.6), GATEWAY.clone().setY(0.9), 1.0);
   const linkGwIbkr = statusLine(GATEWAY.clone().setY(1.7), IBKR.clone().setY(IBKR.y + 0.3), 1.2);
   for (const l of [linkDataGw, linkGwIbkr]) root.add(l.group);
+  // Technology looks after the infrastructure: a dashed line from its platform down to IB Gateway
+  const techAt = centers.get("technology");
+  if (techAt) {
+    const a = techAt.clone().add(new THREE.Vector3(1.4, -0.2, 0.6)), b = GATEWAY.clone().setY(1.9);
+    const mid = a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, 1.5, 0));
+    const care = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(50)),
+      new THREE.LineDashedMaterial({ color: "#748ffc", dashSize: 0.3, gapSize: 0.22, transparent: true, opacity: 0.7 }));
+    care.computeLineDistances();
+    root.add(care);
+  }
   const asLine = (st: string): LineState => (st === "down" ? "down" : st === "warn" ? "unknown" : "ok");
 
   // ---- home network: router and ISP, joined by plain status lines AI1 -> router -> ISP -> internet

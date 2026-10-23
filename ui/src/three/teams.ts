@@ -25,10 +25,10 @@ export type Team = {
   link?: { href: string; label: string };
 };
 
-export type TeamId = "data" | "scanner" | "risk" | "trading" | "portfolio" | "exits" | "review" | "news";
+export type TeamId = "data" | "scanner" | "risk" | "trading" | "portfolio" | "exits" | "review" | "news" | "technology";
 
 /** Pipeline order: prices in, ideas, checks, orders, holdings, exits, lessons. */
-export const ORDER: TeamId[] = ["data", "scanner", "risk", "trading", "portfolio", "exits", "review", "news"];
+export const ORDER: TeamId[] = ["data", "scanner", "risk", "trading", "portfolio", "exits", "review", "news", "technology"];
 
 export type Brain = {
   mode: string;
@@ -349,6 +349,31 @@ export function buildWorld(d: Inputs): World {
       rows: [],
     },
   ];
+
+  // ---- Technology: looks after the software, AI1, the network, IB Gateway and the IBKR link
+  const checks: [string, boolean | null][] = [
+    ["Darwin", !!s], ["AI1", !!s], ["Router", n?.router ?? null], ["Internet", n?.internet ?? null],
+    ["IB Gateway", s ? gatewayUp : null], ["IBKR link", ibkrUp],
+  ];
+  const ok = checks.filter(([, v]) => v === true).length;
+  const down = checks.filter(([, v]) => v === false).map(([k]) => k);
+  const deskState = (v: boolean | null | undefined): AgentState => (v === false ? "alert" : v == null ? "waiting" : "working");
+  teams.push({
+    id: "technology", name: "Technology", color: "#748ffc",
+    job: "Keeps the software, the AI1 server, the router and internet, IB Gateway and the IBKR link running.",
+    agents: [
+      { name: "Software", role: `Darwin ${s?.version ?? ""}: trader, dashboard, deploys`.replace("  ", " "), state: deskState(!!s) },
+      { name: "Server", role: "AI1: the machine everything runs on", state: deskState(!!s) },
+      { name: "Network", role: `Router ${n?.router_host ?? ""} and the internet (ISP)`, state: deskState(n?.checked_at ? n.internet : null) },
+      { name: "Broker link", role: "IB Gateway and its link to IBKR", state: deskState(s ? gatewayUp && ibkrUp !== false : null) },
+    ],
+    headline: { value: `${ok}/${checks.length}`, label: "systems OK" },
+    rows: [
+      { label: "Down", value: down.length ? down.join(", ") : "nothing", tone: down.length ? "neg" : "pos" },
+      { label: "Version", value: s?.version ?? "–" },
+    ],
+    alert: down.length ? `${down.join(", ")} down` : undefined,
+  });
 
   return {
     teams,

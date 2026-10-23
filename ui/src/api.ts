@@ -55,6 +55,7 @@ export type Status = {
     internet: boolean | null; router: boolean | null; internet_ms: number | null; router_ms: number | null;
     internet_host: string; router_host: string | null; checked_at: string | null; error: string | null;
   } | null;
+  version?: string; // deployed git revision (short)
 };
 
 export type ChatMessage = { role: "user" | "assistant"; content: string; tools?: string[] };

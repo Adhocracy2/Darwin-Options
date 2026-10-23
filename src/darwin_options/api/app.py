@@ -30,12 +30,14 @@ from ..settings import SETTINGS_KEY, SettingsError, describe as describe_setting
 
 log = logging.getLogger(__name__)
 UI_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
+REVISION = Path(__file__).resolve().parents[3] / "REVISION"  # written by scripts/deploy.sh
 
 
 def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastAPI:
     cfg = cfg or load_config()
     engine = engine or build_engine(cfg)
     app = FastAPI(title="Darwin Options")
+    version = REVISION.read_text().strip()[:7] if REVISION.exists() else "dev"
     net = NetworkMonitor(cfg.network.internet_host, cfg.network.router_host, cfg.network.interval_s)
     if cfg.network.enabled:
         net.start()
@@ -70,7 +72,8 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
                 "allow_new_entries": engine.cfg.allow_new_entries,
                 "strategies": [s.name for s in engine.strategies],
                 "activity": _activity(),
-                "network": net.snapshot() if cfg.network.enabled else None}
+                "network": net.snapshot() if cfg.network.enabled else None,
+                "version": version}
 
     def _activity() -> dict:
         """When prices and orders last moved through IB Gateway (for the 3D view's data flows)."""

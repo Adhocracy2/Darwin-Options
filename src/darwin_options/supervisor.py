@@ -39,6 +39,9 @@ at risk per trade (2% until 30 trades have closed), up to 10 positions, 30% tota
 short strike, the planned time exit (days before expiry), and at most one roll at the time exit.
 - Review: learns from closed trades; suggests changes only with 20+ trades per group.
 - The Engine runs that cycle every few minutes during US market hours (9:30-16:00 New York).
+- News Desk: set up for market news and earnings/ex-dividend dates, not tasked yet.
+- Technology: keeps the software, the AI1 server, the home router and internet link, IB Gateway and the \
+link to IBKR running. The dashboard pings google.com (and the router if that fails) every 30 seconds.
 
 Hard rules the system never breaks: never a naked short option; every trade's max loss is known and capped \
 before it is placed; short options are closed before they can be assigned; live trading needs two separate \
