@@ -20,12 +20,19 @@ from .base import StrategyContext
 EXIT_DEFAULTS = {"take_profit_pct": 0.50, "stop_loss_mult": 1.5, "itm_buffer_pct": 0.002}
 
 
+def live_quotes(cfg) -> bool:
+    """Option quotes and the stock price are both live."""
+    return cfg.ibkr.market_data_type == 1 or (cfg.ibkr.live_options and cfg.ibkr.live_stock)
+
+
 def blocked(ctx: StrategyContext) -> str | None:
     """Why no same-day trade can open right now, or None."""
     sd, cfg = ctx.cfg.same_day, ctx.cfg
     now = ctx.now or clock.now_ny()
-    if sd.require_live_data and cfg.data == "ibkr" and cfg.ibkr.market_data_type != 1:
-        return "same-day trades need live quotes (ibkr.market_data_type: 1); delayed quotes are 15 minutes old"
+    if sd.require_live_data and cfg.data == "ibkr" and not live_quotes(cfg):
+        return ("same-day trades need live quotes for the options and the stock price; "
+                + ("the stock price is still 15 minutes delayed (needs a US equity data subscription)"
+                   if cfg.ibkr.live_options else "quotes are 15 minutes delayed"))
     if ctx.today.isoformat() in {str(d) for d in sd.skip_dates}:
         return "event day (same_day.skip_dates): no same-day trades"
     if clock.early_close(ctx.today):

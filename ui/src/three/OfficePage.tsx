@@ -6,6 +6,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import type { Candidate, Event, Performance, Position, RiskState, Status } from "../api";
 import { api } from "../api";
 import { ChatPanel } from "./ChatPanel";
+import { formatCountdown, marketClock } from "./marketClock";
 import { ago, buildWorld, STATE_COLOR, STATE_LABEL, type AgentState, type SystemInfo, type Team } from "./teams";
 import logoDark from "../assets/logo-dark.png";
 import "./concepts.css";
@@ -65,6 +66,20 @@ function Details({ team, onClose }: { team: Team | SystemInfo; onClose: () => vo
   );
 }
 
+/** Countdown to the US market's next open or close (New York hours, holidays, early closes). */
+function MarketCountdown() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  const c = marketClock(now);
+  return (
+    <div className={`c3-clock ${c.open ? "open" : "shut"}`}>
+      <span>{c.open ? "Market open · closes in" : "Market closed · opens in"}</span>
+      <b>{formatCountdown(c.inMs)}</b>
+      {c.early && <em>{c.open ? "early close 1:00pm NY" : "early close that day"}</em>}
+    </div>
+  );
+}
+
 /** What Darwin is doing right now, under the logo: paper trading, live trading, or a backtest running. */
 function ModeBanner({ status }: { status: Status | null }) {
   if (!status) return null;
@@ -84,7 +99,6 @@ function ModeBanner({ status }: { status: Status | null }) {
   return (
     <div className={`c3-mode ${live ? "live" : "paper"}`}>
       <span className="c3-mode-dot" /><b>{live ? "LIVE TRADING" : status.mode === "sim" ? "SIMULATION" : "PAPER TRADING"}</b>
-      <span className="c3-mode-sub">{status.account?.is_market_open ? "market open" : "market closed"}</span>
     </div>
   );
 }
@@ -146,6 +160,7 @@ export default function OfficePage() {
       <div className="c3-stage">
         <img className="c3-logo" src={logoDark} alt="Darwin Options" />
         <ModeBanner status={data.status} />
+        <MarketCountdown />
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
             <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />

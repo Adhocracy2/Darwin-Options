@@ -91,3 +91,17 @@ def test_last_quotes_returns_newest_priced_quote(tmp_path):
     ts, q = got[c.symbol]
     assert ts.startswith("2026-10-22T19") and q.mid == pytest.approx(4.7) and q.iv == 0.12
     assert last_quotes(str(tmp_path / "none.db"), [c.symbol]) == {}
+
+
+def test_price_series_buckets(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from darwin_options.recorder import Recorder, price_series
+    rec = Recorder(str(tmp_path / "md.db"))
+    base = datetime.now(timezone.utc).replace(second=0, microsecond=0) - timedelta(hours=2)
+    for i, px in enumerate([100, 101, 102, 103]):
+        rec.now = lambda i=i: (base + timedelta(minutes=5 * i)).isoformat(timespec="seconds")
+        rec.spot("SPY", px)
+        rec.spot("SPX", px * 10)
+    out = price_series(str(tmp_path / "md.db"), ["SPY", "SPX", "QQQ"], days=1, bucket_min=15)
+    assert out["QQQ"] == [] and 1 <= len(out["SPY"]) <= 2 and out["SPY"][-1]["price"] == 103
+    assert out["SPX"][-1]["price"] == 1030

@@ -234,3 +234,39 @@ def test_event_days_and_todays_stats(cfg):
     st = sameday.today_stats([a, b], FRIDAY)
     assert st["trades"] == 2 and st["open"] == 1 and st["pnl"] < 0
     assert sameday.today_stats([a, b], date(2026, 10, 26))["trades"] == 0
+
+
+def test_engine_records_same_day_and_daily_chains(cfg, tmp_path):
+    from darwin_options.recorder import Recorder, RecordingMarketData, summary
+    cfg.record.path = str(tmp_path / "md.db")
+    md = SyntheticMarketData(spots={"SPY": 600.0}, today=FRIDAY, strike_step=1.0)
+    md.now = ny(16, 0)
+    rec_md = RecordingMarketData(md, Recorder(cfg.record.path))
+    cfg.universe = ["SPY"]
+    store = Store(cfg.db_path)
+    eng = Engine(cfg, rec_md, SimBroker(md, store, 10_000, always_open=True), store)
+    eng.collect()
+    import sqlite3
+    db = sqlite3.connect(cfg.record.path)
+    expiries = {r[0] for r in db.execute("SELECT DISTINCT expiry FROM quotes")}
+    assert FRIDAY.isoformat() in expiries  # today's (0DTE) expiry
+    assert len(expiries) > 1  # plus the daily wider chain
+    n = summary(cfg.record.path)["quotes"]
+    eng.collect()  # daily chain only once a day
+    same_day_only = summary(cfg.record.path)["quotes"] - n
+    assert 0 < same_day_only < n
+
+
+def test_profit_target_must_be_7_percent_of_risk(cfg):
+    from darwin_options.models import Candidate, Leg
+    from darwin_options.risk import RiskGate
+    occ = lambda k: OptionContract.from_occ(OptionContract.occ("SPY", date(2026, 12, 18), Right.PUT, k))
+    legs = [Leg(occ(550), -1), Leg(occ(545), 1)]
+    def cand(credit):
+        return Candidate("credit_spread", "SPY", legs, net_credit=credit, max_loss=(5 - credit) * 100,
+                         max_profit=credit * 100, pop=0.8, expected_value=5.0, score=0.05, spot=600.0)
+    gate = RiskGate(cfg)
+    thin = gate.check(cand(0.50), [], 10_000, 10_000, FRIDAY)  # target $25 on $450 risk = 5.6%
+    assert any("profit target" in r for r in thin.reasons)
+    ok = gate.check(cand(1.00), [], 10_000, 10_000, FRIDAY)  # target $50 on $400 = 12.5%
+    assert not any("profit target" in r for r in ok.reasons)

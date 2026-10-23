@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import type { Event, Metrics, NewsItem, SymbolMetrics } from "../api";
+import { api } from "../api";
 import { LineChart, Meter, ZeroBars } from "./charts";
 
 export const pct = (v: number | null | undefined, d = 1) => (v == null ? "–" : `${(v * 100).toFixed(d)}%`);
@@ -242,6 +243,37 @@ export function VideoPanel() {
       </div>
       {err && <p className="mx-err">{err}</p>}
       <p className="muted small">Live channels only play while that channel is broadcasting.</p>
+    </section>
+  );
+}
+
+/** SPY and SPX from Darwin's own recordings, each as % change from its first point (one scale for both). */
+export function CompareChart({ symbols = ["SPY", "SPX"], days = 30 }: { symbols?: string[]; days?: number }) {
+  const [data, setData] = useState<Record<string, { ts: string; price: number }[]> | null>(null);
+  useEffect(() => {
+    const load = () => api.compare(symbols.join(","), days).then(setData).catch(() => setData({}));
+    load();
+    const t = setInterval(load, 300_000);
+    return () => clearInterval(t);
+  }, [symbols.join(","), days]);
+  const colors = ["var(--series-1)", "var(--series-2)"];
+  if (!data) return <section className="mx-panel"><h3>SPY vs SPX</h3><p className="muted">Loading…</p></section>;
+  const keyOf = (ts: string) => ts.slice(0, 15); // 10-minute-ish buckets line up across symbols
+  const keys = [...new Set(symbols.flatMap((s) => (data[s] ?? []).map((p) => keyOf(p.ts))))].sort();
+  const series = symbols.map((sym, i) => {
+    const pts = data[sym] ?? [];
+    const base = pts[0]?.price;
+    const by = new Map(pts.map((p) => [keyOf(p.ts), p.price]));
+    return { name: sym, color: colors[i % colors.length], values: keys.map((k) => (base && by.has(k) ? by.get(k)! / base - 1 : null)) };
+  });
+  const missing = symbols.filter((s) => (data[s] ?? []).length < 2);
+  const last = symbols.map((s) => { const p = data[s] ?? []; return p.length ? `${s} ${p[p.length - 1].price.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : null; }).filter(Boolean);
+  return (
+    <section className="mx-panel"><h3>SPY vs SPX (% change, last {days} days)</h3>
+      {keys.length > 1 ? (
+        <LineChart label="SPY and SPX percent change" dates={keys.map((k) => k + "0:00Z")} fmt={(v) => `${(v * 100).toFixed(1)}%`} series={series} />
+      ) : <p className="muted">Not enough recorded prices yet.</p>}
+      <p className="muted small">{last.join(" · ")}{missing.length ? ` · ${missing.join(", ")} recording starts at the next market open (IBKR sends no past SPX prices without an index data subscription).` : ""}</p>
     </section>
   );
 }

@@ -34,7 +34,10 @@ CLOSES_CACHE_S = 3600
 # Extra fields on the stock stream: option volume (100), option open interest (101),
 # historical volatility (104) and the stock's option-implied volatility (106).
 STREAM_TICKS = "100,101,104,106"
-HISTORY = {"price": "TRADES", "iv": "OPTION_IMPLIED_VOLATILITY", "hv": "HISTORICAL_VOLATILITY"}  # restart a stream with no update for this long during market hours
+HISTORY = {"price": "TRADES", "iv": "OPTION_IMPLIED_VOLATILITY", "hv": "HISTORICAL_VOLATILITY"}
+HISTORY_TIMEOUT_S = 20
+# Indexes (not stocks): exchange and the option trading class with daily expiries.
+INDEXES = {"SPX": ("CBOE", "SPXW"), "XSP": ("CBOE", "XSP"), "NDX": ("NASDAQ", "NDXP"), "RUT": ("RUSSELL", "RUTW")}  # restart a stream with no update for this long during market hours
 
 
 def _price(t) -> float | None:
@@ -62,16 +65,19 @@ class IBKRMarketData:
         self._stocks: dict[str, object] = {}
         self._chains: dict[tuple, tuple[float, Chain]] = {}
         self._streams: dict[str, tuple[object, object]] = {}
-        self._closes: dict[tuple, tuple[float, list[float]]] = {}  # symbol -> (connection, streaming ticker)
+        self._closes: dict[tuple, tuple[float, list[float]]] = {}
+        self._no_history: set = set()  # (index, day) IBKR sent no history for  # symbol -> (connection, streaming ticker)
 
     def today(self) -> date:
         return datetime.now(NY).date()
 
     async def _stock(self, symbol: str):
+        """The underlying: a stock or ETF, or an index (INDEXES) such as SPX."""
         if symbol not in self._stocks:
-            from ib_async import Stock
+            from ib_async import Index, Stock
 
-            [c] = await self.s.ib.qualifyContractsAsync(Stock(symbol, "SMART", "USD"))
+            und = Index(symbol, INDEXES[symbol][0], "USD") if symbol in INDEXES else Stock(symbol, "SMART", "USD")
+            [c] = await self.s.ib.qualifyContractsAsync(und)
             self._stocks[symbol] = c
         return self._stocks[symbol]
 
@@ -116,11 +122,17 @@ class IBKRMarketData:
         if hit and time.monotonic() - hit[0] < CLOSES_CACHE_S:
             return list(hit[1])
 
+        if (symbol, self.today()) in self._no_history:
+            return []
+
         async def go():
             bars = await self.s.ib.reqHistoricalDataAsync(
-                await self._stock(symbol), "", f"{int(days * 1.6) + 5} D", "1 day", "TRADES", True)
+                await self._stock(symbol), "", f"{int(days * 1.6) + 5} D", "1 day", "TRADES", True, timeout=HISTORY_TIMEOUT_S)
             return [float(b.close) for b in bars]
         out = self.s.call(go)
+        if not out and symbol in INDEXES:  # index history needs its own IBKR subscription: don't ask again today
+            self._no_history.add((symbol, self.today()))
+            log.info("no daily history from IBKR for %s (index data subscription needed)", symbol)
         self._closes = {k: v for k, v in self._closes.items() if k[-1] == key[-1]}
         self._closes[key] = (time.monotonic(), out)
         return list(out)
@@ -133,10 +145,16 @@ class IBKRMarketData:
         if hit and time.monotonic() - hit[0] < CLOSES_CACHE_S:
             return list(hit[1])
 
+        if (symbol, self.today()) in self._no_history:
+            return []
+
         async def go():
-            bars = await self.s.ib.reqHistoricalDataAsync(await self._stock(symbol), "", "1 Y", "1 day", HISTORY[kind], True)
+            bars = await self.s.ib.reqHistoricalDataAsync(await self._stock(symbol), "", "1 Y", "1 day", HISTORY[kind], True,
+                                                          timeout=HISTORY_TIMEOUT_S)
             return [(str(b.date), float(b.close)) for b in bars if num(b.close) is not None]
         out = self.s.call(go)
+        if not out and symbol in INDEXES:
+            self._no_history.add((symbol, self.today()))
         self._closes[key] = (time.monotonic(), out)
         return list(out)
 
@@ -191,9 +209,10 @@ class IBKRMarketData:
 
         async def go():
             stk = await self._stock(symbol)
-            params = await self.s.ib.reqSecDefOptParamsAsync(symbol, "", "STK", stk.conId)
+            params = await self.s.ib.reqSecDefOptParamsAsync(symbol, "", "IND" if symbol in INDEXES else "STK", stk.conId)
             smart = [p for p in params if p.exchange == "SMART"] or list(params)
-            chain = next((p for p in smart if p.tradingClass == symbol), smart[0])
+            want = INDEXES[symbol][1] if symbol in INDEXES else symbol  # SPX: SPXW lists the dailies, incl. 0DTE
+            chain = next((p for p in smart if p.tradingClass == want), smart[0])
             expiries = sorted(e for e in (parse_expiry(x) for x in chain.expirations)
                               if dte_min <= (e - today).days <= dte_max)[: self.s.cfg.max_expiries]
             ib_contracts: dict[str, object] = {}

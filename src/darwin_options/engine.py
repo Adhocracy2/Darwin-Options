@@ -72,6 +72,7 @@ class Engine:
         self.base_cfg = copy.deepcopy(cfg)  # config.yaml as loaded; dashboard settings go on top
         self._settings_version = 0
         self.stop_requested = False  # set on SIGTERM: place no new orders, finish the cycle
+        self._daily_collected: dict = {}  # ticker -> date its daily chain was recorded
         self._build_strategies()
         self.refresh_settings()
 
@@ -379,6 +380,39 @@ class Engine:
         self.store.save_scan(trim_scan(rows))
         return opened
 
+    def collect(self) -> None:
+        """Record option prices the strategies didn't ask for, for backtests (record.* in config):
+        today's expiry every cycle, and once a day a wider chain. Fetched chains are saved by the
+        recording wrapper. Only on live IBKR data; a failure here never stops trading."""
+        rc = self.cfg.record
+        if not (rc.enabled and hasattr(self.md, "rec")):  # the recorder wraps live IBKR data only
+            return
+        from . import clock
+        now = self.now() or clock.now_ny()
+        for sym in dict.fromkeys(list(self.cfg.universe) + list(rc.extra_symbols)):
+            try:
+                if sym not in self.cfg.universe:
+                    self.md.spot(sym)  # recorded each cycle (the chain records it too, but only when it has quotes)
+                if rc.collect_same_day:
+                    self.md.chain(sym, 0, 0, None, rc.same_day_strike_pct)
+                if now.time() >= clock.parse_hhmm(rc.daily_chain_time) and self._daily_collected.get(sym) != now.date():
+                    session = getattr(self.md, "s", None) or getattr(getattr(self.md, "md", None), "s", None)
+                    old = session.cfg.max_expiries if session else None
+                    if session:
+                        session.cfg.max_expiries = rc.daily_chain_max_expiries
+                    try:
+                        self.md.chain(sym, 1, rc.daily_chain_max_dte, None, rc.daily_chain_strike_pct)
+                    finally:
+                        if session:
+                            session.cfg.max_expiries = old
+                    self._daily_collected[sym] = now.date()
+                    log.info("recorded the daily option chain for %s", sym)
+            except GatewayUnavailable as e:  # gateway slow or gone: stop collecting this cycle, keep the cycle going
+                log.warning("collecting %s prices stopped: %s", sym, e)
+                break
+            except Exception as e:
+                log.warning("collecting %s prices failed: %s", sym, e)
+
     def preview(self) -> list[dict]:
         """Scan and risk-check without trading."""
         self.refresh_settings()
@@ -421,5 +455,6 @@ class Engine:
         opened = self.open_new() if not diffs else []
         if diffs:
             log.warning("skipping new entries until journal and broker agree: %s", diffs)
+        self.collect()
         self.snapshot()
         return {"exits": [a.reason for a in exits], "opened": [p.id for p in opened], "reconcile": diffs}

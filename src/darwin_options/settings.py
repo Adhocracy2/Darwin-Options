@@ -368,7 +368,7 @@ def describe(cfg: Config, base: Config, overlay: dict, open_counts: dict[str, in
         "types": [_type_info(base, t) for t in TYPES],
         "same_day": {"entry_start": cfg.same_day.entry_start, "entry_end": cfg.same_day.entry_end,
                      "close_by_time": cfg.same_day.close_by_time,
-                     "live_data": cfg.data != "ibkr" or cfg.ibkr.market_data_type == 1,
+                     "live_data": cfg.data != "ibkr" or sameday.live_quotes(cfg),
                      "max_risk_per_trade_pct": cfg.same_day.max_risk_per_trade_pct,
                      "max_trades_per_day": cfg.same_day.max_trades_per_day, "max_open": cfg.same_day.max_open,
                      "daily_loss_limit_pct": cfg.same_day.daily_loss_limit_pct,

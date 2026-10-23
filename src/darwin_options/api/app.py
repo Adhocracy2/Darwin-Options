@@ -413,6 +413,12 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         met.update(at=_time.monotonic(), data=data)
         return data
 
+    @app.get("/api/compare")
+    def compare(symbols: str = "SPY,SPX", days: int = 30):
+        """Recorded prices of several underlyings for a comparison chart."""
+        syms = [x.strip().upper() for x in symbols.split(",") if x.strip()][:6]
+        return recorder.price_series(cfg.record.path, syms, max(1, min(days, 365)))
+
     @app.get("/api/news")
     def get_news():
         """Headlines per ticker: Yahoo Finance (with links) and IBKR's free providers."""

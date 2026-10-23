@@ -321,6 +321,7 @@ export const api = {
   stopBacktest: (id: string) => req<{ stopping: string }>(`/api/backtests/${id}/stop`, "POST"),
   metrics: (fresh = false) => req<Metrics>(`/api/metrics${fresh ? "?fresh=true" : ""}`),
   news: () => req<NewsItem[]>("/api/news"),
+  compare: (symbols = "SPY,SPX", days = 30) => req<Record<string, { ts: string; price: number }[]>>(`/api/compare?symbols=${symbols}&days=${days}`),
   supervisor: () => req<{ available: boolean; reason?: string; model?: string }>("/api/supervisor"),
   supervisorChat: (messages: ChatMessage[]) =>
     req<{ reply: string; tools_used: string[] }>("/api/supervisor/chat", "POST",

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Event, Metrics, NewsItem } from "../api";
 import { api } from "../api";
 import {
-  ago, Charts, Gauges, greekSignals, lifecycleSignals, LogPanel, money, NewsPanel, num, pct, sentimentSignals,
+  ago, Charts, CompareChart, Gauges, greekSignals, lifecycleSignals, LogPanel, money, NewsPanel, num, pct, sentimentSignals,
   SignalList, technicalSignals, ToneTag, volatilitySignals, VideoPanel, type Signal,
 } from "./panels";
 import "./metrics.css";
@@ -98,6 +98,7 @@ export default function MetricsPage() {
                 <SignalList title="Positioning & sentiment" signals={sentimentSignals(s)} />
                 <SignalList title="Technicals & momentum" signals={technicalSignals(s)} />
                 <SignalList title="Portfolio & lifecycle" signals={lifecycleSignals(m)} />
+                <CompareChart />
               </div>
               <div className="mx-grid three">
                 <LogPanel events={events} />
@@ -110,6 +111,7 @@ export default function MetricsPage() {
             <div className="mx-desk">
               <div className="mx-desk-main">
                 <Charts s={s} />
+                <CompareChart />
                 <div className="mx-grid two"><NewsPanel news={news} limit={8} /><LogPanel events={events} limit={8} /></div>
               </div>
               <aside className="mx-desk-side">
@@ -135,6 +137,7 @@ export default function MetricsPage() {
                 </ul>
               </section>
               <div className="mx-grid two"><Charts s={s} which={["price"]} /><Charts s={s} which={["vol"]} /></div>
+              <CompareChart />
               <div className="mx-grid three"><NewsPanel news={news} /><LogPanel events={events} /><VideoPanel /></div>
             </div>
           )}

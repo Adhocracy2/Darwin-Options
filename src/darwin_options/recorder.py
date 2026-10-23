@@ -264,6 +264,26 @@ def last_write(path: str) -> str | None:
     return row[0] if row else None
 
 
+def price_series(path: str, symbols: list[str], days: int = 30, bucket_min: int = 15) -> dict[str, list[dict]]:
+    """Recorded prices per symbol for the last `days`, one point per `bucket_min` minutes (the last
+    price in each): {symbol: [{ts, price}]}, oldest first."""
+    if not Path(path).exists():
+        return {s: [] for s in symbols}
+    since = _ts(datetime.now(timezone.utc) - timedelta(days=days))
+    db = sqlite3.connect(path, timeout=30)
+    out = {}
+    for sym in symbols:
+        rows = db.execute("SELECT ts, price FROM spots WHERE symbol=? AND ts>=? ORDER BY ts", (sym, since)).fetchall()
+        buckets: dict[str, tuple[str, float]] = {}
+        for ts, px in rows:
+            t = datetime.fromisoformat(ts)
+            key = t.replace(minute=t.minute - t.minute % bucket_min, second=0).isoformat()
+            buckets[key] = (ts, px)
+        out[sym] = [{"ts": ts, "price": px} for ts, px in buckets.values()]
+    db.close()
+    return out
+
+
 def summary(path: str) -> dict:
     """What has been recorded so far."""
     if not Path(path).exists():

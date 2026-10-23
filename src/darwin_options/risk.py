@@ -77,6 +77,12 @@ class RiskGate:
             reasons.append(f"non-positive expected value ({c.expected_value:.2f})")
         if c.score < r.min_score:
             reasons.append(f"score {c.score:.3f} below min {r.min_score}")
+        # credit trades only: a debit trade's (calendar, LEAPS) max profit is an estimate, its upside open
+        if r.min_target_return_on_risk and c.net_credit > 0 and math.isfinite(c.max_profit) and c.max_loss > 0 and not c.attach_to:
+            target = m.take_profit_pct * c.max_profit  # what the take-profit rule closes for
+            if target / c.max_loss < r.min_target_return_on_risk:
+                reasons.append(f"profit target ${target:.0f} is {target / c.max_loss:.1%} of the ${c.max_loss:.0f} risk "
+                               f"(min {r.min_target_return_on_risk:.0%})")
         for leg in c.legs:
             same_day = m.close_by_time is not None and leg.contract.dte(today) == 0
             if leg.is_short and leg.contract.dte(today) <= m.close_at_dte and not same_day:

@@ -19,8 +19,13 @@ renamed. Don't reintroduce "flick" names.
   language, no jargon without a gloss.
 - Not a professional developer; explain options/trading concepts briefly when they matter.
 - Wants honest numbers. Say clearly when something is untested, simulated, or a guess.
-- IBKR account has Level 4 options. Since 2026-10-23 the paper setup simulates a **$10,000 account**
-  (`risk.capital: 10000`, pilot off) with 1–5% risked per trade, at the owner's request.
+- IBKR account has Level 4 options. Since 2026-10-23 the paper account itself is **US$10,000 in USD** (reset by the
+  owner) and `risk.capital: 10000`, pilot off. Risk follows the owner's **3-5-7 rule**: at most 3% of the account per
+  trade, 5% at risk across all open trades, and (credit trades) the planned take-profit must be at least 7% of the
+  trade's risk (`risk.min_target_return_on_risk`). The 2-per-ticker limit was removed. Live option quotes (OPRA)
+  since 2026-10-23 via `market_data_type: 3` (live where subscribed); the SPY stock price is still delayed (no US
+  equity subscription), so same-day trading stays blocked (`ibkr.live_stock`). SPX/SPXW is recorded, not traded
+  (`record.extra_symbols`); IBKR gives no SPX history without an index subscription.
 - The "$100 → $1,000 → $10,000" growth goal was dropped at their request. Don't bring it back.
 
 ## Hard rules (never weaken these)
@@ -57,9 +62,8 @@ renamed. Don't reintroduce "flick" names.
   blend of IV and 30-day realized vol; trades valued at the **planned exit** (close-at-DTE), legs
   repriced at their IV, never below intrinsic (American options); subtracts commissions and
   closing bid/ask.
-- `risk.py` (gate, never-naked) + `portfolio.py`. Defaults follow the owner's $10k rules: max 5% and
-  min 1% (`min_risk_per_trade_pct`) of equity per trade, up to 10 positions, 30% total at risk,
-  2 per ticker, 30% cap on the correlated SPY/QQQ/IWM/DIA group; 2% probation until 30 closed
+- `risk.py` (gate, never-naked) + `portfolio.py`. Defaults follow the owner's $10k rules: max 3% and
+  min 1% (`min_risk_per_trade_pct`) of equity per trade, up to 10 positions, 5% total at risk, 30% cap on the correlated SPY/QQQ/IWM/DIA group; 2% probation until 30 closed
   trades, then half-Kelly capped at 5%; drawdown brakes 15%/30%, 6% daily stop; pilot mode optional.
 - `manager.py`: exits; per-strategy overrides via `management.overrides`.
 - `roller.py`: rolling credit spreads out in time (one 4-leg combo), only at the planned time exit

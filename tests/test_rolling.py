@@ -25,6 +25,7 @@ def setup(engine):
     engine.md.base_iv, engine.md.realized = 0.30, 0.10  # options rich vs actual moves: rolling can pay
     engine.md.half_spread_pct = 0.01
     engine.cfg.risk.probation_risk_pct = 0.05  # room for the 2-lot roll (2% would cap at 1 lot)
+    engine.cfg.risk.stages = [{"min_equity": 0, "risk_per_trade_pct": 0.05, "max_portfolio_risk_pct": 0.30, "max_positions": 10}]
 
 
 def test_default_market_rolls_are_refused_without_edge(engine, md):

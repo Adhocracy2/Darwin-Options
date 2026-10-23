@@ -116,14 +116,17 @@ class RiskConfig:
     max_loss_per_trade_pct: float = 0.02  # of equity
     max_portfolio_risk_pct: float = 0.25  # sum of max losses of open positions / equity
     max_positions: int = 10
-    max_positions_per_underlying: int = 2  # spread positions across tickers
+    max_positions_per_underlying: int = 10  # owner removed the 2-per-ticker limit (2026-10-23)
     min_score: float = 0.0  # minimum expected value per $ risked
+    # 3-5-7 rule, "7": the planned take-profit must earn at least this share of the trade's max loss
+    min_target_return_on_risk: float = 0.07
 
     # Limits by account size. Defaults follow the usual rules for a ~$10k account: risk 1-5% of
     # it per trade, spread over 5-10 smaller positions, about 30% of it at risk in total.
     # These are ceilings; measured-edge sizing below can only make trades smaller.
     stages: list = field(default_factory=lambda: [
-        {"min_equity": 0, "risk_per_trade_pct": 0.05, "max_portfolio_risk_pct": 0.30, "max_positions": 10},
+        # the owner's 3-5-7 rule: at most 3% per trade, 5% at risk across all open trades
+        {"min_equity": 0, "risk_per_trade_pct": 0.03, "max_portfolio_risk_pct": 0.05, "max_positions": 10},
     ])
     # Trades risking less than this share of equity are skipped: too small to matter after
     # commissions (four legs cost ~$5 a round trip).
@@ -216,7 +219,11 @@ class IBKRConfig:
     port: int = 4002  # IB Gateway: 4002 paper, 4001 live. TWS: 7497 paper, 7496 live.
     client_id: int = 17  # the dashboard uses client_id + 1
     account: str = ""  # blank = the only account on the login
-    market_data_type: int = 1  # 1 = live (needs OPRA subscription), 3 = delayed
+    market_data_type: int = 1  # 1 = live only; 3 = live where subscribed, delayed otherwise
+    # What's live with type 3 (depends on your IBKR subscriptions): OPRA makes option quotes live;
+    # the stock's own price needs a US equity subscription (e.g. NYSE Arca / Network B).
+    live_options: bool = False
+    live_stock: bool = False
     max_expiries: int = 2  # expiries fetched per chain request (keeps requests within IB pacing)
     # Reuse a fetched option chain for this long when scanning for new trades (open positions
     # are always priced fresh, and same-day chains are never reused). Each chain is hundreds
@@ -242,6 +249,14 @@ class RecordConfig:
     """Save every price received from IBKR to a separate database, for replays and history."""
     enabled: bool = True
     path: str = "var/marketdata.db"
+    # Beyond what the strategies ask for, so backtests can try other expiries and same-day trades:
+    extra_symbols: list = field(default_factory=lambda: ["SPX"])  # recorded but not traded (indexes allowed)
+    collect_same_day: bool = True  # every cycle: today's expiry, strikes within same_day_strike_pct
+    same_day_strike_pct: float = 0.03
+    daily_chain_time: str = "15:45"  # once a day (New York): the chain out to daily_chain_max_dte days
+    daily_chain_max_dte: int = 60
+    daily_chain_max_expiries: int = 4  # keeps the once-a-day request to a few hundred quotes
+    daily_chain_strike_pct: float = 0.05
     # The dashboard shows saved prices up to this old (the trader saves every cycle) and only
     # asks IBKR when they're older. Outside market hours it shows the last saved ones.
     dashboard_max_age_s: int = 360

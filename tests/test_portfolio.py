@@ -29,12 +29,13 @@ def test_kelly_matches_known_case():
     assert kelly_fraction([-0.1] * 10) == 0.0
 
 
-def test_default_limits_follow_one_to_five_percent_rules():
+def test_default_limits_follow_the_3_5_7_rule():
     r = RiskConfig()
     for eq in (150, 10_000, 60_000):
         st = stage_for(r, eq)
-        assert st["risk_per_trade_pct"] == 0.05 and st["max_positions"] == 10 and st["max_portfolio_risk_pct"] == 0.30
+        assert st["risk_per_trade_pct"] == 0.03 and st["max_positions"] == 10 and st["max_portfolio_risk_pct"] == 0.05
     assert r.min_risk_per_trade_pct == 0.01 and r.probation_risk_pct == 0.02
+    assert r.min_target_return_on_risk == 0.07 and r.max_positions_per_underlying >= 10
 
 
 def test_stage_by_equity():
@@ -53,7 +54,7 @@ def test_probation_then_half_kelly():
     wins, losses = closed(0.10, 30), closed(-0.20, 10)  # +2.5% average return on risk
     s = assess(r, 5_000, [], wins + losses, now=NOW)
     k = kelly_fraction([0.10] * 30 + [-0.20] * 10)
-    assert s.measured["kelly"] == k and s.risk_per_trade_pct == pytest.approx(min(0.05, k / 2))
+    assert s.measured["kelly"] == k and s.risk_per_trade_pct == pytest.approx(min(0.03, k / 2))
 
 
 def test_no_edge_pauses_entries():
@@ -88,11 +89,15 @@ def test_hundred_dollar_account_cannot_trade_a_spread(cfg):
     assert not d.approved and "trade cap $2" in d.reasons[0]  # probation 2% of $100
 
 
+ROOMY = [{"min_equity": 0, "risk_per_trade_pct": 0.05, "max_portfolio_risk_pct": 0.30, "max_positions": 10}]
+
+
 def test_correlated_group_shares_one_budget(cfg):
+    cfg.risk.stages = ROOMY  # total-risk room above the group cap, so the group cap is what binds
     state = assess(cfg.risk, 10_000, [], [], now=NOW)
     held = [Position("credit_spread", u, [], max_loss=1_400, max_profit=100) for u in ("SPY", "QQQ")]
     d = RiskGate(cfg).check(spread_candidate("IWM", max_loss=400), held, 10_000, 10_000, date(2026, 10, 21), state)
-    assert not d.approved and "US equity index room $200" in d.reasons[0]  # 30% of 10k = 3,000; 2,800 used
+    assert not d.approved and any("US equity index room $200" in r for r in d.reasons)  # 30% of 10k = 3,000; 2,800 used
 
 
 def test_halt_blocks_new_entries(cfg):
@@ -176,6 +181,7 @@ def test_one_dollar_spreads_lose_to_commissions(engine, md):
 
 
 def test_trades_below_one_percent_are_skipped(cfg):
+    cfg.risk.stages = ROOMY
     state = assess(cfg.risk, 10_000, [], [], now=NOW)
     assert state.min_trade_risk == 100 and state.per_trade_cap == 200  # 1% floor, 2% probation cap
     gate = RiskGate(cfg)
