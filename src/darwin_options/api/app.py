@@ -12,6 +12,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..office import OFFICE_KEY, LayoutError, clean_layout
 from ..broker.base import NY, us_market_open
 from ..config import Config, load_config
 from ..engine import CYCLE_KEY, Engine
@@ -117,6 +118,42 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         except SettingsError as e:
             raise HTTPException(400, str(e))
         return settings_view()
+
+    # ---- 3D office layout (display only) ---------------------------------------
+
+    @app.get("/api/marketdata/recent")
+    def marketdata_recent():
+        """What the Market Data team saved most recently (the 3D office's data store panel)."""
+        unds = list(dict.fromkeys([*engine.cfg.universe, *cfg.record.extra_symbols]))
+        return recorder.recent(cfg.record.path, unds) | {"summary": recorder.summary(cfg.record.path),
+                                                          "enabled": cfg.record.enabled}
+
+    @app.get("/api/marketdata/history")
+    def marketdata_history(symbol: str, kind: str = "quotes", before_ts: str | None = None,
+                           before_id: int | None = None, limit: int = 50):
+        """One ticker's saved data, newest first, 50 rows a page (the data store panel scrolls through it)."""
+        if kind not in ("quotes", "spots"):
+            raise HTTPException(400, "kind must be quotes or spots")
+        before = (before_ts, before_id) if before_ts and before_id is not None else None
+        return recorder.history(cfg.record.path, symbol.upper(), kind, before, max(1, min(limit, 200)))
+
+    @app.get("/api/office")
+    def get_office():
+        return engine.store.get_setting(OFFICE_KEY)[0]
+
+    @app.put("/api/office")
+    def put_office(layout: dict = Body(...)):
+        try:
+            clean = clean_layout(layout)
+        except LayoutError as e:
+            raise HTTPException(400, str(e))
+        engine.store.set_setting(OFFICE_KEY, clean)
+        return clean
+
+    @app.delete("/api/office")
+    def reset_office():
+        engine.store.set_setting(OFFICE_KEY, {})
+        return {}
 
     # ---- payoff diagrams --------------------------------------------------------
 
@@ -299,8 +336,17 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     @app.get("/api/risk")
     def risk():
         acct = engine.broker.account()
-        state = engine.risk_state(acct.equity).as_dict()
         positions = engine.store.positions("open")
+        # value open trades with the prices the trader already saved (IBKR only if they're stale):
+        # asking IBKR for every refresh made this take 3 s with the market closed
+        syms = [l.symbol for p in positions for l in p.open_legs]
+        try:
+            marks = {s: q.mid for s, q in _prices(syms)[0].items()} if syms else {}
+        except GatewayUnavailable:
+            marks = None
+        if marks is not None and any(s not in marks for s in syms):
+            marks = None  # missing a price: let the engine work it out as before
+        state = engine.risk_state(acct.equity, marks).as_dict()
         state["open_risk"] = sum(p.max_loss for p in positions)
         state["open_positions"] = len(positions)
         state["max_loss_per_trade"] = cfg.risk.max_loss_per_trade

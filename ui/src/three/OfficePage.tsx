@@ -7,6 +7,9 @@ import type { ActivityRow, Candidate, Event, Performance, Position, RiskState, S
 import { api } from "../api";
 import { ReceivedCard } from "../components/ReceivedCard";
 import { ActivityLog } from "./ActivityLog";
+import { applyLayout, DEFAULT_LAYOUT, normalise, type Layout } from "./layout";
+import { TeamsPanel, type TeamBase } from "./TeamsPanel";
+import { DataStorePanel } from "./DataStorePanel";
 import { ChatPanel } from "./ChatPanel";
 import { formatCountdown, marketClock } from "./marketClock";
 import { ago, buildWorld, STATE_COLOR, STATE_LABEL, type AgentState, type SystemInfo, type Team } from "./teams";
@@ -207,9 +210,38 @@ export default function OfficePage() {
     const saving = demo.step === "collect" ? new Date().toISOString() : data.status.activity?.prices_at ?? null;
     return { ...data, status: { ...data.status, cycle: demo, activity: { prices_at: saving, orders_at: data.status.activity?.orders_at ?? null } } };
   }, [data, demo]);
-  const world = useMemo(() => buildWorld(view), [view]);
+  // the owner's layout (Teams panel): live preview while editing, saved on the server
+  const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
+  const [draft, setDraft] = useState<Layout | null>(null);
+  const [showTeams, setShowTeams] = useState(false);
+  const [teamsErr, setTeamsErr] = useState<string | null>(null);
+  useEffect(() => { api.office().then((r) => setLayout(normalise(r))).catch(() => undefined); }, []);
+  const shownLayout = draft ?? layout;
+  const [sceneLayout, setSceneLayout] = useState<Layout>(shownLayout);
+  useEffect(() => { const t = setTimeout(() => setSceneLayout(shownLayout), 250); return () => clearTimeout(t); }, [shownLayout]);
+  const base = useMemo(() => buildWorld(view), [view]);
+  const world = useMemo(() => applyLayout(base, sceneLayout), [base, sceneLayout]);
+  const teamBases: TeamBase[] = useMemo(() => [
+    ...base.teams.map((t) => ({ id: t.id, name: t.name, color: t.color, job: t.job })),
+    ...base.systems.filter((x) => x.id === "supervisor").map((x) => ({ id: x.id, name: x.name, color: "#868e96", job: x.job })),
+  ], [base]);
+  const unsaved = !!draft && JSON.stringify(draft) !== JSON.stringify(layout);
+  const closeTeams = () => {
+    if (unsaved && !confirm("Close without saving your team changes?")) return;
+    setDraft(null); setShowTeams(false); setTeamsErr(null);
+  };
+  const saveTeams = () => {
+    if (!draft) return;
+    api.saveOffice(draft).then((r) => { const l = normalise(r); setLayout(l); setDraft(l); setTeamsErr(null); })
+      .catch((e) => setTeamsErr(String(e.message ?? e)));
+  };
+  const resetTeams = () => {
+    api.resetOffice().then(() => { setLayout(DEFAULT_LAYOUT); setDraft(DEFAULT_LAYOUT); setTeamsErr(null); })
+      .catch((e) => setTeamsErr(String(e.message ?? e)));
+  };
+  const names = useMemo(() => Object.fromEntries(world.teams.map((t) => [t.id, t.name])), [world]);
   const all: (Team | SystemInfo)[] = [...world.teams, ...world.systems];
-  const picked = selected && selected !== "supervisor" ? all.find((t) => t.id === selected) ?? null : null;
+  const picked = selected && selected !== "supervisor" && selected !== "datastore" ? all.find((t) => t.id === selected) ?? null : null;
   const onBusy = useCallback((b: boolean) => setBusy(b), []);
   // the Supervisor's lookups, as the teams whose work it read (shown as task flows to them)
   const [burst, setBurst] = useState<{ ids: string[]; n: number } | null>(null);
@@ -276,13 +308,19 @@ export default function OfficePage() {
         <MarketCountdown />
         <CycleActivity status={view.status} />
         <button className="c3-logbtn" onClick={() => setShowLog(true)} title="Everything the teams did, by team and cycle">Activity Log</button>
-        {showLog && <ActivityLog onClose={() => setShowLog(false)} extra={demoLog} />}
+        {showLog && <ActivityLog onClose={() => setShowLog(false)} extra={demoLog} names={names} />}
+        <button className="c3-logbtn teams" onClick={() => { setSelected(null); setDraft(layout); setShowTeams(true); }} title="Names, colours, lines, levels and departments">Teams</button>
+        {showTeams && draft && (
+          <TeamsPanel layout={draft} teams={teamBases} onChange={setDraft} onSave={saveTeams} onReset={resetTeams}
+            onClose={closeTeams} saved={!unsaved} error={teamsErr} />
+        )}
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
             <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />
           </Suspense>
         ) : <div className="c3-loading">{data.error ? "Couldn't reach the dashboard API." : "Loading data…"}</div>}
         {selected === "supervisor" && <ChatPanel onClose={() => setSelected(null)} onBusy={onBusy} onTools={onTools} />}
+        {selected === "datastore" && <DataStorePanel onClose={() => setSelected(null)} />}
         {picked && <Details team={picked} onClose={() => setSelected(null)} status={data.status} />}
         <div className="c3-legend">
           {(Object.keys(STATE_COLOR) as AgentState[]).map((s) => <span key={s}><i style={{ background: STATE_COLOR[s] }} />{STATE_LABEL[s]}</span>)}
@@ -295,6 +333,7 @@ export default function OfficePage() {
         </div>
         {hovered && !picked && selected !== "supervisor" && (() => {
           const tip = hovered === "tech-toggle" ? "Show or hide what Technology looks after: IB Gateway, the router, the ISP and IBKR"
+            : hovered === "datastore" ? "Saved prices for backtests. Click to see what was stored most recently."
             : all.find((t) => t.id === hovered)?.job;
           return tip ? <div className="c3-tip">{tip}</div> : null;
         })()}

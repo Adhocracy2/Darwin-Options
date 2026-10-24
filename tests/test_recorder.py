@@ -105,3 +105,32 @@ def test_price_series_buckets(tmp_path):
     out = price_series(str(tmp_path / "md.db"), ["SPY", "SPX", "QQQ"], days=1, bucket_min=15)
     assert out["QQQ"] == [] and 1 <= len(out["SPY"]) <= 2 and out["SPY"][-1]["price"] == 103
     assert out["SPX"][-1]["price"] == 1030
+
+
+def test_recent_shows_newest_saves_and_quotes(cfg):
+    from darwin_options.recorder import recent
+    times, _ = record_cycles(cfg, n=3)
+    r = recent(cfg.record.path, ["SPY", "QQQ"], saves=5)
+    assert r["exists"] and r["last_write"].startswith(times[-1].isoformat()[:16])
+    assert r["saves"] and r["saves"][0]["ts"] >= r["saves"][-1]["ts"] and all(s["quotes"] > 0 for s in r["saves"])
+    newest = r["quotes"]["SPY"]
+    assert newest and all(q["ts"] >= times[-1].isoformat()[:16] for q in newest)
+    assert r["spots"][0]["symbol"] in ("SPY", "QQQ", "IWM")
+    assert recent(cfg.record.path + ".missing", ["SPY"])["exists"] is False
+
+
+def test_history_pages_newest_first_without_gaps(cfg):
+    from darwin_options.recorder import history
+    times, _ = record_cycles(cfg, n=3)
+    first = history(cfg.record.path, "SPY", "quotes", limit=7)
+    assert len(first["rows"]) == 7 and first["total"] > 7
+    assert first["latest"] == times[-1].isoformat()[:16]
+    seen, page = list(first["rows"]), first
+    while page["next"]:
+        page = history(cfg.record.path, "SPY", "quotes", (page["next"]["ts"], page["next"]["id"]), limit=7)
+        seen += page["rows"]
+    assert len(seen) == first["total"] and len({r["id"] for r in seen}) == first["total"]
+    assert [r["ts"] for r in seen] == sorted((r["ts"] for r in seen), reverse=True)
+    spots = history(cfg.record.path, "SPY", "spots")
+    assert spots["total"] == len(spots["rows"]) > 0 and spots["next"] is None
+    assert history(cfg.record.path, "SPY", "nonsense")["rows"] == []

@@ -310,9 +310,10 @@ class Engine:
         unreal = sum(p.unrealized_pnl(marks) for p in open_pos if all(l.symbol in marks for l in p.open_legs))
         self.store.snapshot(acct.equity, sum(p.max_loss for p in open_pos), realized, unreal)
 
-    def sizing_equity(self, account_equity: float) -> float:
+    def sizing_equity(self, account_equity: float, marks: dict[str, float] | None = None) -> float:
         """What the system sizes against: the account, or (with `risk.capital`) the trading
-        capital plus the system's own P&L, never more than the account holds."""
+        capital plus the system's own P&L, never more than the account holds. `marks` (option
+        symbol -> mid) lets the dashboard pass prices it already has instead of asking IBKR."""
         cap = self.cfg.risk.capital
         if cap is None:
             return account_equity
@@ -322,7 +323,8 @@ class Engine:
         unrealized = 0.0
         if open_pos:
             try:
-                marks = {s: q.mid for s, q in self.md.quotes([l.symbol for p in open_pos for l in p.open_legs]).items()}
+                if marks is None:
+                    marks = {s: q.mid for s, q in self.md.quotes([l.symbol for p in open_pos for l in p.open_legs]).items()}
                 unrealized = sum(p.unrealized_pnl(marks) for p in open_pos if all(l.symbol in marks for l in p.open_legs))
             except Exception:
                 snaps = self.store.snapshots(1)
@@ -345,9 +347,9 @@ class Engine:
         return sum(1 for p in self.store.positions(None)
                    if _ny_date(p.opened_at) == today and not (p.entry_notes or {}).get("rolled_from"))
 
-    def risk_state(self, account_equity: float) -> RiskState:
+    def risk_state(self, account_equity: float, marks: dict[str, float] | None = None) -> RiskState:
         reset, _ = self.store.get_setting(RISK_RESET_KEY)
-        return assess(self.cfg.risk, self.sizing_equity(account_equity), self._equity_series(),
+        return assess(self.cfg.risk, self.sizing_equity(account_equity, marks), self._equity_series(),
                       self.store.positions("closed"), reset.get("ts"), now=self.now(), opened_today=self.opened_today())
 
     def reset_drawdown(self) -> None:

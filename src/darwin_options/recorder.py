@@ -304,6 +304,64 @@ def price_series(path: str, symbols: list[str], days: int = 30, bucket_min: int 
     return out
 
 
+def recent(path: str, underlyings: list[str], saves: int = 12, rows: int = 60) -> dict:
+    """The newest saved data for the dashboard: recent saves (one per minute, with how many option quotes),
+    the latest stock prices, and the newest batch of option quotes for each underlying."""
+    if not Path(path).exists():
+        return {"exists": False, "saves": [], "spots": [], "quotes": {}}
+    db = sqlite3.connect(path, timeout=30)
+    out: dict = {"exists": True, "last_write": None, "saves": [], "spots": [], "quotes": {}}
+    out["last_write"] = db.execute("SELECT MAX(ts) FROM spots").fetchone()[0]
+    out["spots"] = [{"ts": ts, "symbol": sym, "price": px} for ts, sym, px in
+                    db.execute("SELECT ts, symbol, price FROM spots ORDER BY rowid DESC LIMIT 20")]
+    saves_all = []
+    for und in underlyings:
+        got = db.execute("SELECT substr(ts,1,16) m, COUNT(*), MAX(ts) FROM quotes WHERE underlying=? "
+                         "GROUP BY m ORDER BY m DESC LIMIT ?", (und, saves)).fetchall()
+        saves_all += [{"ts": last, "underlying": und, "quotes": n} for _, n, last in got]
+        if got:
+            newest = got[0][0]
+            out["quotes"][und] = [
+                {"ts": r[0], "symbol": r[1], "expiry": r[2], "strike": r[3], "right": r[4], "bid": r[5], "ask": r[6],
+                 "iv": r[7], "delta": r[8]}
+                for r in db.execute("SELECT ts, symbol, expiry, strike, right, bid, ask, iv, delta FROM quotes "
+                                    "WHERE underlying=? AND ts >= ? ORDER BY expiry, right, strike LIMIT ?",
+                                    (und, newest, rows))]
+    db.close()
+    out["saves"] = sorted(saves_all, key=lambda x: x["ts"], reverse=True)[:saves]
+    return out
+
+
+def history(path: str, symbol: str, kind: str = "quotes", before: tuple[str, int] | None = None,
+            limit: int = 50) -> dict:
+    """Everything saved for one ticker, newest first, a page at a time. kind: "quotes" (its options) or
+    "spots" (its stock price). `before` = the (ts, id) of the last row already shown. Also returns the
+    total count and the newest save's minute (to highlight the latest data)."""
+    empty = {"rows": [], "next": None, "total": 0, "latest": None}
+    if not Path(path).exists() or kind not in ("quotes", "spots"):
+        return empty
+    db = sqlite3.connect(path, timeout=30)
+    if kind == "quotes":
+        cols, where = "rowid, ts, symbol, expiry, strike, right, bid, ask, iv, delta, gamma, theta, vega, open_interest, spot", "underlying=?"
+        names = ["id", "ts", "symbol", "expiry", "strike", "right", "bid", "ask", "iv", "delta", "gamma", "theta", "vega", "open_interest", "spot"]
+    else:
+        cols, where = "rowid, ts, price", "symbol=?"
+        names = ["id", "ts", "price"]
+    total = db.execute(f"SELECT COUNT(*) FROM {kind} WHERE {where}", (symbol,)).fetchone()[0]
+    newest = db.execute(f"SELECT MAX(ts) FROM {kind} WHERE {where}", (symbol,)).fetchone()[0]
+    args: list = [symbol]
+    page = ""
+    if before:
+        page = " AND (ts < ? OR (ts = ? AND rowid < ?))"
+        args += [before[0], before[0], int(before[1])]
+    rows = db.execute(f"SELECT {cols} FROM {kind} WHERE {where}{page} ORDER BY ts DESC, rowid DESC LIMIT ?",
+                      (*args, int(limit))).fetchall()
+    db.close()
+    out = [dict(zip(names, r)) for r in rows]
+    nxt = {"ts": out[-1]["ts"], "id": out[-1]["id"]} if len(out) == limit else None
+    return {"rows": out, "next": nxt, "total": total, "latest": newest[:16] if newest else None}
+
+
 def summary(path: str) -> dict:
     """What has been recorded so far."""
     if not Path(path).exists():

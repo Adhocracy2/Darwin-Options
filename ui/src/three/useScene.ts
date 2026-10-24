@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Stage } from "./stage";
 import type { World } from "./teams";
+import { layoutKey } from "./layout";
 
 export type SceneHandle = {
   update: (w: World) => void;
@@ -27,7 +28,7 @@ export function useScene(
 ) {
   const ref = useRef<HTMLDivElement>(null);
   const st = useRef<{ stage: Stage; handle: SceneHandle; shape: string } | null>(null);
-  const shape = world.teams.map((t) => `${t.id}:${t.agents.length}`).join("|");
+  const shape = world.teams.map((t) => `${t.id}:${t.agents.length}`).join("|") + layoutKey(world.layout);
   const cb = useRef({ onSelect, onHover });
   cb.current = { onSelect, onHover };
 

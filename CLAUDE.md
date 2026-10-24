@@ -125,6 +125,13 @@ renamed. Don't reintroduce "flick" names.
 - The trader stops gracefully on SIGTERM after its current cycle (an order may be mid-fill).
 - Full guide: `docs/DEPLOY.md`.
 
+## Dev environment (how we work since 2026-10-24)
+
+`scripts/dev.sh` starts the DEV environment: Vite on :5173 (http://192.168.1.11:5173/ on the LAN, updates on save)
+proxying to a dev API on :8010 that runs the working copy's `src/` and restarts on edits (IBKR client id 23, the
+shared config/journal, paper only). `scripts/dev.sh stop` stops it; logs in `var/dev/`. It doesn't survive a reboot.
+Make changes there live; **don't commit, push or deploy until the owner asks** (push to main = prod deploy).
+
 ## Checks before every push
 
 ```bash
@@ -189,6 +196,8 @@ deploys to AI1 once its runner is online, so only push tested work there.
 `docs/IMPROVEMENT_PLAN.md` (2026-10-23) is the agreed roadmap: foundations and a Decisions view, an honest
 (path-aware, calibrated) model, historical end-of-day option data for backtests, regime/event/volatility
 filters in shadow mode, then a champion/challenger self-improvement cycle. Work through it in order.
+`docs/TEAMS_ARCHITECTURE.md` (2026-10-24, agreed direction): teams as a library of operations (one file each, settings
+schemas), definitions editable live in the DB, per-operation metrics and shadow mode; template for future systems.
 
 ## Earlier suggested next steps (folded into the plan)
 

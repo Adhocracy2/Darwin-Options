@@ -12,7 +12,8 @@ const TEAM_COLOR: Record<string, string> = {
   review: "#be4bdb", news: "#20c997", technology: "#748ffc", supervisor: "#ffd43b",
 };
 
-export function ActivityLog({ onClose, extra = [] }: { onClose: () => void; extra?: ActivityRow[] }) {
+export function ActivityLog({ onClose, extra = [], names = {} }: { onClose: () => void; extra?: ActivityRow[]; names?: Record<string, string> }) {
+  const nameOf = (id: string) => names[id] ?? TEAM_NAMES[id];
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const [cycles, setCycles] = useState<string[]>([]);
   const [team, setTeam] = useState("");
@@ -39,7 +40,7 @@ export function ActivityLog({ onClose, extra = [] }: { onClose: () => void; extr
         <div className="alog-filters">
           <select value={team} onChange={(e) => setTeam(e.target.value)}>
             <option value="">All teams</option>
-            {Object.entries(TEAM_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.keys(TEAM_NAMES).map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
           </select>
           <select value={cycle} onChange={(e) => setCycle(e.target.value)}>
             <option value="">All cycles</option>
@@ -52,7 +53,7 @@ export function ActivityLog({ onClose, extra = [] }: { onClose: () => void; extr
           {shown.map((r, i) => (
             <li key={`${r.id}-${i}`} style={{ animationDelay: `${Math.min(i, 20) * 25}ms` }}>
               <span className="alog-time">{time(r.ts)}</span>
-              <span className="alog-team" style={{ color: TEAM_COLOR[r.team ?? ""] ?? "var(--c3-muted)" }}>{TEAM_NAMES[r.team ?? ""] ?? "Engine"}</span>
+              <span className="alog-team" style={{ color: TEAM_COLOR[r.team ?? ""] ?? "var(--c3-muted)" }}>{(r.team && nameOf(r.team)) || "Engine"}</span>
               <span className="alog-msg">{r.message}</span>
               {r.cycle && <span className="alog-cycle">{r.cycle.split(" ").pop()}</span>}
             </li>

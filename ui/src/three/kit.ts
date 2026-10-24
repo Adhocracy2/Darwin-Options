@@ -133,8 +133,8 @@ export type TeamBlock = {
 };
 
 /** A glowing rounded-rectangle border, lying flat, just outside a w x d platform. */
-function workFrame(w: number, d: number, color: string) {
-  const outer = new THREE.Shape(), r = 0.45, pad = 0.18, ow = w + pad * 2, od = d + pad * 2, t = 0.09;
+function workFrame(w: number, d: number, color: string, t = 0.09, pad = 0.18) {
+  const outer = new THREE.Shape(), r = 0.45, ow = w + pad * 2, od = d + pad * 2;
   const rr = (sh: THREE.Shape | THREE.Path, x: number, y: number, ww: number, hh: number, rad: number) => {
     sh.moveTo(x + rad, y); sh.lineTo(x + ww - rad, y); sh.quadraticCurveTo(x + ww, y, x + ww, y + rad);
     sh.lineTo(x + ww, y + hh - rad); sh.quadraticCurveTo(x + ww, y + hh, x + ww - rad, y + hh);
@@ -188,11 +188,14 @@ export function makeTeamBlock(team: Team, opts: {
   if (opts.name) {
     const label = floorName(team.name, team.color, w - 0.4, 1.2);
     label.position.set(0, 0.06, d / 2 - 0.68);
+    label.userData.keepColour = true;
+    label.userData.nameLabel = true;
     g.add(label);
   }
   const update = (t: Team) => t.agents.forEach((a, i) => desks[i]?.setState(a.state));
   update(team);
   const frame = workFrame(w, d, "#7cf9ff");
+  frame.mesh.userData.keepColour = true;
   g.add(frame.mesh);
   let working = false;
   return {
@@ -343,7 +346,7 @@ export function disposeGroup(g: THREE.Object3D) {
 
 
 /** A team's name painted flat on its floor (turns with the platform). Fits inside maxW x h; long names wrap. */
-export function floorName(text: string, color: string, maxW: number, h: number) {
+export function floorName(text: string, color: string, maxW: number, h: number, underline = true) {
   const c = document.createElement("canvas");
   const g = c.getContext("2d")!;
   const font = "900 100px system-ui, sans-serif";
@@ -371,7 +374,7 @@ export function floorName(text: string, color: string, maxW: number, h: number) 
   lines.forEach((l, i) => g.fillText(l, cw / 2, lineH / 2 + 4 + i * lineH));
   g.shadowBlur = 0;
   g.fillStyle = color;
-  g.fillRect(20, c.height - 12, cw - 40, 10); // the team's colour under the name
+  if (underline) g.fillRect(20, c.height - 12, cw - 40, 10); // the team's colour under the name
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
@@ -383,33 +386,51 @@ export function floorName(text: string, color: string, maxW: number, h: number) 
   return m;
 }
 
-/** A large tick (all OK) or cross (problem) lying flat, glowing; grey tick when unknown. */
-export function tickCross() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: "#40ff6e", transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
-  const bar = (len: number) => new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.6), mat);
-  const tick = new THREE.Group();
-  const a = bar(1.0); a.position.set(-0.55, 0, 0.12); a.rotation.y = -Math.PI / 4;
-  const b = bar(2.0); b.position.set(0.35, 0, -0.25); b.rotation.y = Math.PI / 4;
-  tick.add(a, b);
-  const cross = new THREE.Group();
-  const c1 = bar(2.4); c1.rotation.y = Math.PI / 4;
-  const c2 = bar(2.4); c2.rotation.y = -Math.PI / 4;
-  cross.add(c1, c2);
-  g.add(tick, cross);
-  g.scale.setScalar(2.1); // large: it's the Technology team's whole status
+/**
+ * The Technology team's status on its own platform. OK: a thumbs-up lying on the floor in a corner
+ * (grey when unknown). Problem: the thumbs-up goes, everything on the platform turns red and a bright red
+ * border flashes around it. Things marked userData.keepColour (name, status strip) stay as they are.
+ */
+export function techAlarm(block: TeamBlock, iconUrl: string, at: { x: number; z: number }, size: number, spin = 0) {
+  const tex = new THREE.TextureLoader().load(iconUrl);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const iconMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false });
+  const icon = new THREE.Mesh(new THREE.PlaneGeometry(size, size), iconMat);
+  icon.rotation.set(-Math.PI / 2, 0, spin); // flat on the floor; spin turns it upright as seen from the front
+  icon.position.set(at.x, 0.08, at.z); // clear of the floor so they don't fight (flicker)
+  icon.renderOrder = 2;
+  icon.userData.keepColour = true;
+  block.group.add(icon);
+
+  const border = workFrame(block.size.w, block.size.d, "#ff1a1a", 0.22, 0.32);
+  border.mesh.userData.keepColour = true;
+  block.group.add(border.mesh);
+
+  const red = new THREE.MeshStandardMaterial({ color: "#ff2a2a", emissive: "#ff0000", emissiveIntensity: 0.5, roughness: 0.5 });
+  const redLine = new THREE.LineBasicMaterial({ color: "#ff4d4d" });
+  const original = new Map<THREE.Mesh | THREE.LineSegments, THREE.Material | THREE.Material[]>();
   let state: "ok" | "bad" | "unknown" = "unknown";
+  const paint = (on: boolean) => block.group.traverse((o) => {
+    const m = o as THREE.Mesh | THREE.LineSegments;
+    if (!(m as THREE.Mesh).isMesh && !(m as THREE.LineSegments).isLineSegments) return;
+    if (m.userData.keepColour) return;
+    if (on) { if (!original.has(m)) original.set(m, m.material); m.material = (m as THREE.LineSegments).isLineSegments ? redLine : red; }
+    else if (original.has(m)) { m.material = original.get(m)!; original.delete(m); }
+  });
   return {
-    group: g,
     set(s: "ok" | "bad" | "unknown") {
+      if (s === state) return;
       state = s;
-      tick.visible = s !== "bad"; cross.visible = s === "bad";
-      mat.color.set(s === "ok" ? "#40ff6e" : s === "bad" ? "#ff3b3b" : "#5c677d");
+      icon.visible = s !== "bad";
+      iconMat.color.set(s === "ok" ? "#ffffff" : "#5c677d"); // the outline is green; grey when unknown
+      iconMat.opacity = s === "ok" ? 1 : 0.55;
+      paint(s === "bad");
     },
     tick(t: number) {
-      mat.opacity = state === "bad" ? 0.6 + 0.35 * Math.sin(t * 5) : 0.85;
-      g.userData.baseY ??= g.position.y; // where it was placed (the platform), floating just above the desks
-      g.position.y = g.userData.baseY + 1.75 + Math.sin(t * 1.5) * 0.05;
+      const flash = state === "bad" ? 0.5 + 0.5 * Math.sin(t * 7) : 0;
+      border.mat.opacity = state === "bad" ? 0.35 + 0.65 * flash : 0;
+      red.emissiveIntensity = 0.35 + 0.45 * flash;
     },
   };
 }

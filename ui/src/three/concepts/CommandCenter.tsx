@@ -4,13 +4,15 @@
  * IBKR's servers). Every link shows two-way traffic: yellow dots out, cyan dots back.
  */
 import * as THREE from "three";
+import thumbsUp from "../../assets/thumbs-up.svg";
 import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { Stage } from "../stage";
 import {
-  cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, roundedSlab, tickCross,
+  cardHtml, disposeGroup, floorName, makeBrain, makeCard, makeTeamBlock, roundedSlab, techAlarm,
   type Palette, type TeamBlock,
 } from "../kit";
 import type { LineState, SystemInfo, Team, TeamId, World } from "../teams";
+import { DEFAULT_LAYOUT, ENGINE, parentOf, placeTeams } from "../layout";
 import { useScene } from "../useScene";
 import type { ConceptProps } from "./types";
 
@@ -20,43 +22,17 @@ const PALETTE: Palette = {
 };
 
 const HOME = { pos: new THREE.Vector3(0, 32, 49), target: new THREE.Vector3(0, 8.2, 0.8) }; // circle a little below centre, under the logo
-// infrastructure shown: fly in to Technology and what it looks after (set once TECH is known, below)
-let SHOWN = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
 
 // Three layers of planes: the six teams that run every cycle on the floor (bottom ring), the
 // engine's circle floating above them (middle), and a top ring for Supervisor, Review and the
 // News Desk. Angles in degrees: 0 = right (towards IB Gateway), 90 = back.
-const MID_Y = 7; // height of the engine's circle (high enough to clear the floor teams behind it)
+const MID_Y = 0.6; // height of the engine's circle: just above the floor
 const TOP_Y = 12.5; // height of the top ring
-const ANGLE: Record<TeamId | "supervisor", number> = {
-  data: 0, scanner: 60, risk: 120, exits: 180, portfolio: 240, trading: 300, // nothing right behind the circle
-  supervisor: 135, technology: 45, review: 225, news: 315, // Technology sits on the side facing the infrastructure
-};
-const TOP = new Set<string>(["supervisor", "review", "news", "technology"]);
-const BOTTOM_R = { x: 9.8, z: 9.8 }, TOP_R = { x: 8, z: 8 }; // true circles, so the gaps between platforms are even
-const posOf = (id: string) => {
-  const top = TOP.has(id), r = top ? TOP_R : BOTTOM_R, a = (ANGLE[id as TeamId] * Math.PI) / 180;
-  return new THREE.Vector3(Math.cos(a) * r.x, top ? TOP_Y : 0, -Math.sin(a) * r.z);
-};
+const BOTTOM_FALLBACK = 14; // a team the layout doesn't place (shouldn't happen): out front
 const BRAIN_Y = 4.4; // the brain floats this high above the circle, clear of the figures on its face
 // Outside systems, drawn small just beyond the ring on the right (SYS = their scale).
 const SYS = 0.55;
-// The infrastructure the Technology team looks after sits just beyond its platform (further out from
-// the brain), hidden until the + on the platform is clicked.
-const TECH = posOf("technology");
-const OUT = new THREE.Vector3(TECH.x, 0, TECH.z).normalize(); // away from the brain
-const SIDE = new THREE.Vector3(-OUT.z, 0, OUT.x); // across
-const GATEWAY = TECH.clone().addScaledVector(OUT, 5.5);
-const ROUTER = TECH.clone().addScaledVector(OUT, 7).addScaledVector(SIDE, 4.6);
-const ISP = TECH.clone().addScaledVector(OUT, 10.5).addScaledVector(SIDE, 4.2);
-const IBKR = TECH.clone().addScaledVector(OUT, 12.5).addScaledVector(SIDE, -1.2).add(new THREE.Vector3(0, 0.4, 0));
-{
-  const target = TECH.clone().addScaledVector(OUT, 6).addScaledVector(SIDE, 1.5);
-  SHOWN = { target, pos: target.clone().add(new THREE.Vector3(3, 14, 22)) };
-}
 const LINE: Record<LineState, string> = { ok: "#51cf66", down: "#ff6b6b", unknown: "#5c677d" };
-const SUPERVISOR = posOf("supervisor");
-const PLAZA_R = 4.2; // radius of the engine's circle
 
 function gatewayBuilding() {
   const g = new THREE.Group();
@@ -117,7 +93,8 @@ function ibkrIsland() {
         const on = Math.sin(t * 3 + i * 1.7) > -0.2;
         m.color.set(up === false ? (on ? "#ff2020" : "#2a0a0a") : up === null ? "#868e96" : on ? "#ff8787" : "#5c1f1f");
       });
-      g.position.y = IBKR.y + Math.sin(t * 0.8) * 0.08; // it floats
+      g.userData.baseY ??= g.position.y;
+      g.position.y = g.userData.baseY + Math.sin(t * 0.8) * 0.08; // it floats
     },
   };
 }
@@ -180,21 +157,28 @@ function ispTower() {
  */
 function dataSaver() {
   const g = new THREE.Group();
+  g.userData.teamId = "datastore"; // click: the saved-data panel
   const bodyMat = new THREE.MeshStandardMaterial({ color: "#1b3a4a", roughness: 0.4, metalness: 0.4, emissive: "#22b8cf", emissiveIntensity: 0.05 });
   const ringMat = new THREE.MeshBasicMaterial({ color: "#22b8cf", transparent: true, opacity: 0.35 });
-  for (let i = 0; i < 3; i++) { // stacked disks: the usual database symbol
-    const disk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.26, 32), bodyMat);
-    disk.position.y = i * 0.32;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.025, 6, 40), ringMat);
+  const DISKS = 5, STEP = 0.34, H = DISKS * STEP; // a tall stack of disks: the usual database symbol
+  for (let i = 0; i < DISKS; i++) {
+    const disk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.28, 32), bodyMat);
+    disk.position.y = 0.14 + i * STEP; // bottom disk sits on the floor
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.51, 0.025, 6, 40), ringMat);
     ring.rotation.x = Math.PI / 2;
-    ring.position.y = i * 0.32 + 0.13;
+    ring.position.y = 0.28 + i * STEP;
     g.add(disk, ring);
   }
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.03, 8, 48), new THREE.MeshBasicMaterial({
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.035, 8, 48), new THREE.MeshBasicMaterial({
     color: "#66d9e8", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
   halo.rotation.x = Math.PI / 2;
-  halo.position.y = 0.32;
+  halo.position.y = H / 2;
   g.add(halo);
+  // a bright burst each time a batch of prices is stored
+  const flashMat = new THREE.MeshBasicMaterial({ color: "#a5f3fc", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const flashGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, H + 0.2, 32, 1, true), flashMat);
+  flashGlow.position.y = H / 2;
+  g.add(flashGlow);
   const chipGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
   const chipMat = new THREE.MeshBasicMaterial({ color: "#66d9e8", transparent: true });
   const chips = Array.from({ length: 10 }, (_, i) => {
@@ -204,23 +188,29 @@ function dataSaver() {
     g.add(m);
     return m;
   });
-  let on = false;
+  let on = false, flashAt = -10, now = 0;
   return {
-    group: g,
+    group: g, height: H,
     set(saving: boolean) { on = saving; },
+    flash() { flashAt = now; },
     tick(t: number, dt: number) {
+      now = t;
       const k = on ? 1 : 0;
-      bodyMat.emissiveIntensity += ((on ? 0.6 : 0.05) - bodyMat.emissiveIntensity) * Math.min(1, dt * 4);
-      ringMat.opacity = 0.35 + 0.4 * k * (0.5 + 0.5 * Math.sin(t * 6));
-      (halo.material as THREE.MeshBasicMaterial).opacity = k * (0.6 - 0.6 * ((t * 1.2) % 1));
-      halo.scale.setScalar(1 + ((t * 1.2) % 1) * 0.8 * k);
+      const f = Math.max(0, 1 - (t - flashAt) / 1.4); // 1 right after a save, fading over 1.4 s
+      const blink = f > 0 ? f * (0.6 + 0.4 * Math.sin((t - flashAt) * 22)) : 0; // a few quick flashes
+      bodyMat.emissiveIntensity += ((on ? 0.6 : 0.05) + blink * 1.6 - bodyMat.emissiveIntensity) * Math.min(1, dt * 12);
+      ringMat.opacity = Math.min(1, 0.35 + 0.4 * k * (0.5 + 0.5 * Math.sin(t * 6)) + blink);
+      flashMat.opacity = blink * 0.55;
+      const pulse = Math.max(k, f);
+      (halo.material as THREE.MeshBasicMaterial).opacity = pulse * (0.6 - 0.6 * ((t * 1.2) % 1));
+      halo.scale.setScalar(1 + ((t * 1.2) % 1) * 0.8 * pulse);
       g.rotation.y += dt * (on ? 1.5 : 0.2);
       for (const c of chips) {
         c.visible = on;
         if (!on) continue;
-        const u = (t * 0.6 + c.userData.phase) % 1; // rise from the platform (-2.2) into the database (0)
-        const r = 1.1 * (1 - u);
-        c.position.set(Math.cos(c.userData.angle) * r, -2.2 + u * 2.4, Math.sin(c.userData.angle) * r);
+        const u = (t * 0.6 + c.userData.phase) % 1; // rise from the floor round the stack into its top
+        const r = 1.0 * (1 - u);
+        c.position.set(Math.cos(c.userData.angle) * r, u * (H + 0.3), Math.sin(c.userData.angle) * r);
         (c.material as THREE.MeshBasicMaterial).opacity = Math.min(1, u * 4) * (1 - Math.max(0, (u - 0.85) / 0.15));
         c.rotation.x += dt * 3;
       }
@@ -393,6 +383,33 @@ function build(stage: Stage, world: World) {
   const root = new THREE.Group();
   stage.add(root);
 
+  // ---- where everything goes, from the owner's layout (Teams panel)
+  const layout = world.layout ?? DEFAULT_LAYOUT;
+  const ids = [...world.teams.map((t) => t.id as string), "supervisor"];
+  const { at: placed, arcs } = placeTeams(layout, ids);
+  const posOf = (id: string) => {
+    const p = placed.get(id);
+    if (!p) return new THREE.Vector3(0, 0, BOTTOM_FALLBACK);
+    const a = (p.angle * Math.PI) / 180;
+    return new THREE.Vector3(Math.cos(a) * p.radius, p.level === "top" ? TOP_Y : 0, -Math.sin(a) * p.radius);
+  };
+  const TOP = new Set(ids.filter((id) => placed.get(id)?.level === "top"));
+  // The infrastructure the Technology team looks after sits just beyond its platform (further out from
+  // the brain), hidden until the + on the platform is clicked.
+  const TECH = posOf("technology");
+  const OUT = new THREE.Vector3(TECH.x, 0, TECH.z).normalize(); // away from the brain
+  const SIDE = new THREE.Vector3(-OUT.z, 0, OUT.x); // across
+  const GATEWAY = TECH.clone().addScaledVector(OUT, 5.5);
+  const ROUTER = TECH.clone().addScaledVector(OUT, 7).addScaledVector(SIDE, 4.6);
+  const ISP = TECH.clone().addScaledVector(OUT, 10.5).addScaledVector(SIDE, 4.2);
+  const IBKR = TECH.clone().addScaledVector(OUT, 12.5).addScaledVector(SIDE, -1.2).add(new THREE.Vector3(0, 0.4, 0));
+  const shownTarget = TECH.clone().addScaledVector(OUT, 6).addScaledVector(SIDE, 1.5);
+  const SHOWN = { target: shownTarget, pos: shownTarget.clone().add(new THREE.Vector3(3, 14, 22)) }; // infrastructure shown
+  const SUPERVISOR = posOf("supervisor");
+  // the engine's circle fills the floor inside the bottom ring, clear of the platforms
+  const bottomR = Math.min(...[...placed.values()].filter((p) => p.level === "bottom").map((p) => p.radius), 9.8);
+  const PLAZA_R = Math.min(8, Math.max(4.2, bottomR - 4));
+
   root.add(new THREE.HemisphereLight("#9db4ff", "#0b1020", 1.4));
   const key = new THREE.DirectionalLight("#ffffff", 1.6);
   key.position.set(8, 16, 10);
@@ -412,12 +429,21 @@ function build(stage: Stage, world: World) {
   // floor teams, up to the top teams
   // dotted line from the brain to each platform, in the team's colour; tasks travel along it
   const brainAt = new THREE.Vector3(0, MID_Y + BRAIN_Y, -0.3);
-  const platformLink = (c: THREE.Vector3, color: string) => {
+  const platformLink = (id: string, c: THREE.Vector3, color: string) => {
     const dir = new THREE.Vector3(c.x, 0, c.z).normalize();
     const end = c.clone().sub(dir.clone().multiplyScalar(1.0)).setY(c.y + 0.1); // onto the platform's inner half
-    const up = c.y > brainAt.y;
-    const curve = new THREE.CubicBezierCurve3(brainAt.clone(), brainAt.clone().add(dir.clone().multiplyScalar(3.5)),
-      end.clone().add(new THREE.Vector3(0, up ? 0.8 : 3.2, 0)), end);
+    const parent = parentOf(layout, id, ids);
+    let curve: THREE.CubicBezierCurve3;
+    if (parent === ENGINE) {
+      const up = c.y > brainAt.y;
+      curve = new THREE.CubicBezierCurve3(brainAt.clone(), brainAt.clone().add(dir.clone().multiplyScalar(3.5)),
+        end.clone().add(new THREE.Vector3(0, up ? 0.8 : 3.2, 0)), end);
+    } else { // from the parent team's platform, arching over
+      const from = posOf(parent).add(new THREE.Vector3(0, 0.15, 0));
+      const lift = 2.5 + Math.abs(from.y - end.y) * 0.3;
+      curve = new THREE.CubicBezierCurve3(from, from.clone().add(new THREE.Vector3(0, lift, 0)),
+        end.clone().add(new THREE.Vector3(0, lift, 0)), end);
+    }
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(80)),
       new THREE.LineDashedMaterial({ color, dashSize: 0.22, gapSize: 0.18, transparent: true, opacity: 0.85 }));
     line.computeLineDistances();
@@ -425,12 +451,42 @@ function build(stage: Stage, world: World) {
     return curve;
   };
   const linkCurves = new Map<string, THREE.CubicBezierCurve3>();
+  // every platform lines up with the brain (desks face it), name strip on its outer edge, reading from outside the ring
+  const faceBrain = (block: TeamBlock, c: THREE.Vector3) => { block.group.rotation.y = Math.atan2(c.x, c.z); };
+
+  // ---- departments: a faint band under their teams on the ring, with the name along its outer edge
+  for (const arc of arcs) {
+    const y = arc.level === "top" ? TOP_Y - 0.2 : -0.22;
+    const inner = arc.radius - 3.6, outer = arc.radius + 5.2; // extra depth outside the platforms for the name
+    const t0 = (arc.from * Math.PI) / 180, len = ((arc.to - arc.from) * Math.PI) / 180;
+    const band = new THREE.Mesh(new THREE.RingGeometry(inner, outer, Math.max(12, Math.round(len * 40)), 1, t0, len),
+      new THREE.MeshBasicMaterial({ color: arc.dept.color, transparent: true, opacity: 0.09, depthWrite: false, side: THREE.DoubleSide }));
+    band.rotation.x = -Math.PI / 2;
+    band.position.y = y;
+    root.add(band);
+    const edgeShape = new THREE.Shape();
+    edgeShape.absarc(0, 0, outer, t0, t0 + len, false);
+    edgeShape.absarc(0, 0, inner, t0 + len, t0, true);
+    edgeShape.closePath();
+    const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(edgeShape.getPoints(48)),
+      new THREE.LineBasicMaterial({ color: arc.dept.color, transparent: true, opacity: 0.35 }));
+    edge.rotation.x = -Math.PI / 2;
+    edge.position.y = y + 0.01;
+    root.add(edge);
+    const mid = (arc.from + arc.to) / 2, m = (mid * Math.PI) / 180;
+    const label = floorName(arc.dept.name, arc.dept.color, 9, 1.0, false);
+    (label.material as THREE.MeshBasicMaterial).opacity = 0.75;
+    const holder = new THREE.Group();
+    holder.position.set(Math.cos(m) * (outer - 0.85), y + 0.02, -Math.sin(m) * (outer - 0.85));
+    holder.rotation.y = m + Math.PI / 2; // reads from outside the ring
+    holder.add(label);
+    root.add(holder);
+  }
 
   const blocks = new Map<string, TeamBlock>();
   const cards = new Map<string, ReturnType<typeof makeCard>>();
   const centers = new Map<string, THREE.Vector3>();
 
-  const techMark = tickCross();
   // ---- teams on the ring
   for (const team of world.teams) {
     const c = posOf(team.id);
@@ -444,16 +500,11 @@ function build(stage: Stage, world: World) {
       name: true,
     });
     block.group.position.copy(c);
-    block.group.rotation.y = Math.PI / 4;
+    faceBrain(block, c);
     root.add(block.group);
     blocks.set(team.id, block);
-    linkCurves.set(team.id, platformLink(c, team.color));
+    linkCurves.set(team.id, platformLink(team.id, c, team.color));
 
-    if (team.id === "technology") { // a big tick or cross over the platform says how the systems are
-      techMark.group.position.copy(c);
-      techMark.group.userData.teamId = "technology";
-      root.add(techMark.group);
-    }
   }
 
   // ---- Technology platform: IBKR link status written on its floor, with a + that shows the infrastructure
@@ -467,7 +518,16 @@ function build(stage: Stage, world: World) {
   techStrip.rotation.x = -Math.PI / 2;
   techStrip.position.set(0, 0.06, (techBlock?.size.d ?? 4.9) / 2 - 1.8); // just behind the name strip, above the floor
   techStrip.userData.teamId = "tech-toggle";
+  techStrip.userData.keepColour = true;
   techBlock?.group.add(techStrip);
+  // status: thumbs-up under the desks, or the whole platform red with a flashing border
+  const tD = techBlock?.size.d ?? 6.2, tW = techBlock?.size.w ?? 3.6;
+  const techSpin = techBlock?.group.rotation.y ?? 0;
+  // the back corner (away from the name and status strips) that's furthest top-left as seen from the front
+  const corners = [-1, 1].map((sx) => ({ x: sx * (tW / 2 - 0.7), z: -tD / 2 + 0.7 }));
+  const screenTL = (p: { x: number; z: number }) => (p.x * Math.cos(techSpin) + p.z * Math.sin(techSpin)) + (-p.x * Math.sin(techSpin) + p.z * Math.cos(techSpin));
+  const corner = corners.sort((a, b) => screenTL(a) - screenTL(b))[0];
+  const techMark = techBlock ? techAlarm(techBlock, thumbsUp, corner, 1.1, -techSpin) : null;
   let infraShown = false;
   const renderTech = (w: World) => {
     const g = techCanvas.getContext("2d")!;
@@ -490,7 +550,7 @@ function build(stage: Stage, world: World) {
     g.fillStyle = "#e7ecf5";
     g.save();
     g.translate(912, 128);
-    g.rotate(Math.PI / 4); // the platform is turned 45°: turn the sign back so it reads as + / − from the front
+    g.rotate(techSpin); // turn the sign against the platform's turn so it reads as + / − from the front
     g.fillRect(-50, -7, 100, 14);
     if (!infraShown) g.fillRect(-7, -50, 14, 100);
     g.restore();
@@ -527,7 +587,7 @@ function build(stage: Stage, world: World) {
   const brain = makeBrain("#7ee3ff");
   brain.group.position.set(0, BRAIN_Y, -0.3);
   engine.add(plaza, ring, brain.group);
-  // the circle's face: FORECAST (realised + unrealised) in the middle, six figures round the inside edge
+  // the circle's face: P&L (realised + unrealised) in the middle, six figures round the inside edge
   const hudCanvas = document.createElement("canvas");
   hudCanvas.width = hudCanvas.height = 1024;
   const hudTex = new THREE.CanvasTexture(hudCanvas);
@@ -538,9 +598,10 @@ function build(stage: Stage, world: World) {
   hud.rotation.x = -Math.PI / 2; // lying on the circle
   hud.position.y = -0.085;
   engine.add(hud);
-  const money = (v: number) => `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-  const pct = (v: number | null, signed = false) => v == null ? "–" : `${signed && v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`;
-  const colour = (v: number | null) => (v == null || Math.abs(v) < 1e-9 ? "#e7ecf5" : v > 0 ? "#69db7c" : "#ff8787");
+  // no + / − on amounts: green = positive, red = negative
+  const money = (v: number) => `$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  const pct = (v: number | null) => v == null ? "–" : `${Math.abs(v * 100).toFixed(1)}%`;
+  const colour = (v: number | null) => (v == null || Math.abs(v) < 1e-9 ? "#e7ecf5" : v > 0 ? "#40ff6e" : "#ff3b3b");
   const STRETCH = 1.55; // text drawn tall: the camera sees the circle at a slant
   const text = (g: CanvasRenderingContext2D, str: string, x: number, y: number, font: string, col: string, glow: string, blur: number) => {
     g.save();
@@ -560,13 +621,13 @@ function build(stage: Stage, world: World) {
     g.textAlign = "center";
     g.textBaseline = "middle";
     const total = m.realized + m.unrealized;
-    text(g, "FORECAST P&L", 512, 420, "700 46px system-ui, sans-serif", "#8fd3ff", "rgba(90,216,255,0.9)", 18);
+    text(g, "P&L", 512, 360, "700 46px system-ui, sans-serif", "#8fd3ff", "rgba(90,216,255,0.9)", 18); // clear of the amount below
     text(g, money(total), 512, 535, "800 150px system-ui, sans-serif", colour(total), colour(total), 30);
     // round the inside edge, clockwise from the top left (canvas top = far side of the circle)
     const cells: [string, string, string, number][] = [
       ["REALISED", money(m.realized), colour(m.realized), 150], ["UNREALISED", money(m.unrealized), colour(m.unrealized), 90],
       ["OPEN", String(m.open), "#e7ecf5", 30], ["%RPT", pct(m.riskPerTrade), "#e7ecf5", 330],
-      ["%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "#ff8787" : "#e7ecf5", 270], ["%TODAY", pct(m.today, true), colour(m.today), 210],
+      ["%DD", pct(m.drawdown), m.drawdown && m.drawdown > 0.05 ? "#ff8787" : "#e7ecf5", 270], ["%TODAY", pct(m.today), colour(m.today == null ? null : Math.round(m.today * 1000) / 1000), 210], // white when it rounds to 0.0%
     ];
     for (const [label, value, col, deg] of cells) {
       const a = (deg * Math.PI) / 180, x = 512 + Math.cos(a) * 365, y = 512 - Math.sin(a) * 340;
@@ -581,7 +642,8 @@ function build(stage: Stage, world: World) {
 
   // ---- the Supervisor: its own small platform on the ring, like the teams', with one desk
   const supTeam = (busy: boolean): Team => ({
-    id: "supervisor" as TeamId, name: "Supervisor", job: "", color: "#868e96", rows: [], // gray platform
+    id: "supervisor" as TeamId, name: layout.teams.supervisor?.name?.trim() || "Supervisor", job: "",
+    color: layout.teams.supervisor?.color || "#868e96", rows: [], // gray platform unless the owner picks a colour
     headline: { value: "", label: "" }, agents: [{ name: "Supervisor", role: "", state: busy ? "waiting" : "working" }],
   });
   const supBlock = makeTeamBlock(supTeam(false), {
@@ -593,8 +655,8 @@ function build(stage: Stage, world: World) {
     name: true,
   });
   supBlock.group.position.copy(SUPERVISOR);
-  linkCurves.set("supervisor", platformLink(SUPERVISOR, "#ffd43b"));
-  supBlock.group.rotation.y = Math.PI / 4;
+  linkCurves.set("supervisor", platformLink("supervisor", SUPERVISOR, layout.teams.supervisor?.color ?? "#ffd43b"));
+  faceBrain(supBlock, SUPERVISOR);
   root.add(supBlock.group);
   blocks.set("supervisor", supBlock);
   centers.set("supervisor", SUPERVISOR.clone().setY(SUPERVISOR.y + 0.6));
@@ -672,26 +734,32 @@ function build(stage: Stage, world: World) {
   const fx = effects(root);
   // Market Data: saving prices for backtests
   const saver = dataSaver();
-  const dataAt = centers.get("data");
-  if (dataAt) {
-    const away = new THREE.Vector3(dataAt.x, 0, dataAt.z).normalize();
-    const side = new THREE.Vector3(-away.z, 0, away.x);
-    saver.group.position.copy(dataAt).addScaledVector(side, -2.6).add(new THREE.Vector3(0, 2.0, 0)); // beside, clear of its name
-    root.add(saver.group);
+  const dataBlock = blocks.get("data");
+  if (dataBlock) { // stands on the Market Data platform, in a back corner clear of the name strip
+    saver.group.position.set(dataBlock.size.w / 2 - 0.75, 0, -dataBlock.size.d / 2 + 0.75);
+    dataBlock.group.add(saver.group);
   }
+  const saverAt = new THREE.Vector3();
+  saver.group.updateWorldMatrix(true, false);
+  saver.group.getWorldPosition(saverAt);
+  centers.set("datastore", saverAt.clone().add(new THREE.Vector3(0, 1, 0)));
   const saveTagEl = document.createElement("div");
   saveTagEl.className = "cc-save";
   saveTagEl.innerHTML = "<i></i>SAVING PRICES<span>for backtests</span>";
   const saveTag = new CSS2DObject(saveTagEl);
-  saveTag.position.copy(saver.group.position).add(new THREE.Vector3(0, 1.5, 0));
+  saveTag.position.copy(saverAt).add(new THREE.Vector3(0, saver.height + 0.9, 0));
   saveTag.visible = false;
   root.add(saveTag);
+  let lastSaved: string | null = null;
   const setSaving = (w: World) => {
     const recent = (ts: string | null, s: number) => !!ts && Date.now() - new Date(ts).getTime() < s * 1000;
     const cy = w.brain.cycle;
     const saving = recent(w.brain.pricesSavedAt, 20) || (!!cy && !cy.finished && ["scan", "collect"].includes(cy.step ?? "") && recent(cy.at, 600));
     saver.set(saving);
     saveTag.visible = saving;
+    const saved = w.brain.pricesSavedAt;
+    if (saved && lastSaved && saved !== lastSaved) saver.flash(); // a new batch was just stored
+    lastSaved = saved ?? lastSaved;
   };
 
   const tasks = taskRunner(root, linkCurves, (id) => blocks.get(id),
@@ -709,7 +777,7 @@ function build(stage: Stage, world: World) {
     renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
     setSaving(w);
-    techMark.set(w.teams.find((t) => t.id === "technology")?.health ?? "unknown");
+    techMark?.set(w.teams.find((t) => t.id === "technology")?.health ?? "unknown");
     // animate only real work: a backtest (fast relay), or the step the trader is on right now
     const cy = w.brain.cycle;
     const fresh = (ts?: string | null) => !!ts && Date.now() - new Date(ts).getTime() < 10 * 60_000;
@@ -724,7 +792,7 @@ function build(stage: Stage, world: World) {
         if (from && teamsNow[0]) tasks.handoff(from, teamsNow[0]); // the task passes from team to team
         const dataAt = centers.get("data")!.clone().add(new THREE.Vector3(0, 0.8, 0));
         if (step === "scan") fx.stream(GATEWAY.clone().add(new THREE.Vector3(0, 1.5, 0)), dataAt, "#66d9e8", 3.5, 3); // IB -> Market Data
-        if (step === "collect") fx.stream(dataAt, saver.group.position.clone(), "#99e9f2", 3, 1.2); // Market Data -> data store
+        if (step === "collect") fx.stream(dataAt, saverAt.clone().add(new THREE.Vector3(0, saver.height, 0)), "#99e9f2", 3, 1.2); // Market Data -> data store
         if (step === "orders") {
           const t = centers.get("trading")!.clone().add(new THREE.Vector3(0, 0.8, 0));
           fx.fly(t, GATEWAY.clone().add(new THREE.Vector3(0, 1.5, 0))); // an order leaves the Trade Desk for IBKR
@@ -776,7 +844,7 @@ function build(stage: Stage, world: World) {
     tasks.tick(dt);
     saver.tick(t, dt);
     fx.tick(dt);
-    techMark.tick(t);
+    techMark?.tick(t);
     blocks.forEach((b) => b.tick(t));
     gw.tick(t);
     isp.tick(t);

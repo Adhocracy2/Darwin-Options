@@ -202,6 +202,22 @@ export type SettingsUpdate = {
   strategies: Record<string, StrategyUpdate>;
 };
 
+/** What the Market Data team saved most recently (3D office data store panel). */
+export type MarketDataRecent = {
+  exists: boolean; enabled?: boolean; last_write: string | null;
+  saves: { ts: string; underlying: string; quotes: number }[];
+  spots: { ts: string; symbol: string; price: number }[];
+  quotes: Record<string, { ts: string; symbol: string; expiry: string; strike: number; right: string; bid: number | null; ask: number | null; iv: number | null; delta: number | null }[]>;
+  summary?: { exists: boolean; quotes?: number; days?: number; first?: string; last?: string; spots?: number; size_mb?: number; by_underlying?: Record<string, number> };
+};
+
+/** One page (50 rows, newest first) of a ticker's saved data. */
+export type MarketDataPage = {
+  rows: ({ id: number; ts: string; price?: number; symbol?: string; expiry?: string; strike?: number; right?: string;
+    bid?: number | null; ask?: number | null; iv?: number | null; delta?: number | null })[];
+  next: { ts: string; id: number } | null; total: number; latest: string | null;
+};
+
 /** Error carrying the server's message (FastAPI puts it in `detail`). */
 export class ApiError extends Error {}
 
@@ -333,6 +349,13 @@ export const api = {
   startBacktest: (b: { dataset: string; start?: string; end?: string; capital?: number }) => req<BacktestRun>("/api/backtests", "POST", b),
   stopBacktest: (id: string) => req<{ stopping: string }>(`/api/backtests/${id}/stop`, "POST"),
   minimizeGateway: (target: "gateway" | "messages") => req<{ minimized: string[] }>(`/api/gateway/minimize?target=${target}`, "POST"),
+  marketDataRecent: () => req<MarketDataRecent>("/api/marketdata/recent"),
+  marketDataHistory: (symbol: string, kind: "quotes" | "spots", before?: { ts: string; id: number } | null) =>
+    req<MarketDataPage>(`/api/marketdata/history?symbol=${encodeURIComponent(symbol)}&kind=${kind}&limit=50` +
+      (before ? `&before_ts=${encodeURIComponent(before.ts)}&before_id=${before.id}` : "")),
+  office: () => req<unknown>("/api/office"),
+  saveOffice: (layout: unknown) => req<unknown>("/api/office", "PUT", layout),
+  resetOffice: () => req<unknown>("/api/office", "DELETE"),
   activity: (team?: string, cycle?: string) => req<{ rows: ActivityRow[]; cycles: string[] }>(
     `/api/activity?limit=400${team ? `&team=${team}` : ""}${cycle ? `&cycle=${encodeURIComponent(cycle)}` : ""}`),
   metrics: (fresh = false) => req<Metrics>(`/api/metrics${fresh ? "?fresh=true" : ""}`),

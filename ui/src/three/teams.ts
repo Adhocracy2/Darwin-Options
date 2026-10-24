@@ -2,6 +2,7 @@
  * Darwin's parts as "teams" of workers at desks, built from the dashboard's live data.
  * All three 3D concepts draw the same teams; only the look and layout differ.
  */
+import type { Layout } from "./layout";
 import type { Candidate, Event, Performance, Position, RiskState, Status } from "../api";
 import { signed, usd } from "../api";
 
@@ -74,7 +75,7 @@ export type Summary = {
   today: number | null; open: number;
 };
 
-export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links; net: NetLines; summary: Summary };
+export type World = { teams: Team[]; systems: SystemInfo[]; brain: Brain; flow: Flow; links: Links; net: NetLines; summary: Summary; layout?: Layout };
 
 /** Last scan as a funnel: how many ideas reached each stage. */
 export type Flow = { scanned: number; passedChecks: number; ordered: number; topBlock: string | null };
