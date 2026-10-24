@@ -164,6 +164,10 @@ deploys to AI1 once its runner is online, so only push tested work there.
   arrive (up to 3 s), then cancels (`ibkr.quote_mode: stream`; `snapshot` is the fallback). Untested in market
   hours as of 2026-10-24 (weekend): check cycle times on Monday.
 - IB Gateway needs a full manual login (password + phone) about weekly; its daily auto-restart can't do that.
+  IBC 3.24.2 is installed in `~/ibc` (2026-10-24): config `~/ibc/config.ini` (mode 600; the owner types the paper
+  login in; never read or copy it), daily restart 07:15 AM, Sunday cold restart 10:00 (phone approval), command
+  server 127.0.0.1:7462. Started at desktop login by `~/.config/autostart/ibc-gateway.desktop`. Darwin's
+  `ibc.enabled` sends RECONNECTDATA after `ibc.reconnect_after_refusals` 10197 refusals in a cycle.
 - **Stock snapshots take ~11s on IBKR** (delayed data: it waits for fields that never arrive). `spot()` keeps one
   streaming subscription per ticker instead (restarted after a reconnect or 5 min of silence in market hours);
   daily closes are cached for an hour. The dashboard reads prices from `var/marketdata.db` first (saved by

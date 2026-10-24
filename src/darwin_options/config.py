@@ -251,6 +251,15 @@ class NetworkConfig:
 
 
 @dataclass
+class IBCConfig:
+    """IBC runs IB Gateway (logins, restarts); Darwin can send it commands (see ibc.py)."""
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 7462
+    reconnect_after_refusals: int = 5  # market-data refusals (code 10197) in one cycle -> RECONNECTDATA
+
+
+@dataclass
 class RecordConfig:
     """Save every price received from IBKR to a separate database, for replays and history."""
     enabled: bool = True
@@ -298,6 +307,7 @@ class Config:
     rolling: RollingConfig = field(default_factory=RollingConfig)
     record: RecordConfig = field(default_factory=RecordConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
+    ibc: IBCConfig = field(default_factory=IBCConfig)
 
     def validate(self) -> None:
         if self.mode not in {"sim", "paper", "live"}:

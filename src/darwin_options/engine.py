@@ -401,6 +401,22 @@ class Engine:
                               for c, n in sorted(self.session.notices.items()) if n - notices_before.get(c, 0) > 0]
         return out
 
+    def _ibc_heal(self, received: dict | None) -> None:
+        """After a burst of market-data refusals (10197, another session using the live data), ask IBC
+        to reconnect IB Gateway's market data. Logged in the journal."""
+        ic = self.cfg.ibc
+        if not (ic.enabled and received):
+            return
+        refused = sum(n["count"] for n in received.get("notices", []) if n["code"] == 10197)
+        if refused < ic.reconnect_after_refusals:
+            return
+        from . import ibc
+        try:
+            reply = ibc.send("RECONNECTDATA", ic.host, ic.port)
+            self.store.event("ibc", f"{refused} quotes refused (competing live session): asked IBC to reconnect market data ({reply or 'no reply'})")
+        except OSError as e:
+            self.store.event("error", f"{refused} quotes refused; couldn't reach IBC to reconnect market data: {e}")
+
     def opening_wait(self) -> str | None:
         """Why new trades must wait (the first minutes after the open), or None."""
         mins = self.cfg.risk.no_entries_after_open_min
@@ -523,6 +539,8 @@ class Engine:
             raise
         from datetime import datetime, timedelta
         nxt = (datetime.fromisoformat(now()) + timedelta(seconds=self.loop_interval_s)).isoformat() if self.loop_interval_s else None
+        received = self._received(notices_before)
         self._step(None, finished=now(), next_at=nxt, result={"exits": len(result["exits"]), "opened": len(result["opened"])},
-                   received=self._received(notices_before))
+                   received=received)
+        self._ibc_heal(received)
         return result
