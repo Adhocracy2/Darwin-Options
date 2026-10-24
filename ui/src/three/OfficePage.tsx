@@ -3,9 +3,10 @@
  * to (IB Gateway, IBKR) and the Supervisor you can chat with. Desktop only for now. Open with #/3d.
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import type { Candidate, Event, Performance, Position, RiskState, Status } from "../api";
+import type { ActivityRow, Candidate, Event, Performance, Position, RiskState, Status } from "../api";
 import { api } from "../api";
 import { ReceivedCard } from "../components/ReceivedCard";
+import { ActivityLog } from "./ActivityLog";
 import { ChatPanel } from "./ChatPanel";
 import { formatCountdown, marketClock } from "./marketClock";
 import { ago, buildWorld, STATE_COLOR, STATE_LABEL, type AgentState, type SystemInfo, type Team } from "./teams";
@@ -104,7 +105,7 @@ function MarketCountdown() {
 
 const STEP_LABEL: Record<string, string> = {
   reconcile: "Portfolio checking positions with IBKR", manage: "Exits checking open trades", scan: "Market Data + Scanner building ideas",
-  risk: "Risk Desk checking ideas", orders: "Trading placing an order", collect: "Market Data saving prices", snapshot: "Portfolio recording equity",
+  risk: "Risk Desk checking ideas", orders: "Trade Desk placing an order", collect: "Market Data saving prices", snapshot: "Portfolio recording equity",
 };
 
 /** The trader's heartbeat: what it's doing right now, how many cycles today, when the next one starts. */
@@ -136,8 +137,11 @@ function CycleActivity({ status }: { status: Status | null }) {
 }
 
 /** What Darwin is doing right now, under the logo: paper trading, live trading, or a backtest running. */
-function ModeBanner({ status }: { status: Status | null }) {
+function ModeBanner({ status, demo }: { status: Status | null; demo?: boolean }) {
   if (!status) return null;
+  if (demo) {
+    return <div className="c3-mode demo"><span className="c3-mode-dot" /><b>DEMO CYCLE</b><span className="c3-mode-sub">simulated: nothing is traded</span></div>;
+  }
   const bt = status.backtest;
   if (bt) {
     const p = bt.total ? bt.done / bt.total : 0;
@@ -163,7 +167,47 @@ export default function OfficePage() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const data = useData();
-  const world = useMemo(() => buildWorld(data), [data]);
+  // Demo: a scripted cycle played on top of the real data, to show what each animation means
+  const [demo, setDemo] = useState<Status["cycle"]>(null);
+  const [demoLog, setDemoLog] = useState<ActivityRow[]>([]);
+  const [showLog, setShowLog] = useState(false);
+  const runDemo = useCallback(() => {
+    const STEPS: [string, number, string, string][] = [
+      ["reconcile", 2600, "portfolio", "checking positions against IBKR"],
+      ["manage", 2600, "exits", "checking open trades against the exit rules"],
+      ["scan", 4200, "scanner", "fetching option chains from IBKR and building trade ideas"],
+      ["risk", 2800, "risk", "checking ideas against the risk rules"],
+      ["orders", 3200, "trading", "placing an order with IBKR"],
+      ["collect", 3600, "data", "saving option prices for backtests"],
+      ["snapshot", 2200, "portfolio", "recording equity"],
+    ];
+    const started = new Date().toISOString();
+    const cyc = "demo";
+    let t = 0, id = -1;
+    const steps: string[] = [];
+    setDemoLog([]);
+    STEPS.forEach(([step, ms, team, msg]) => {
+      setTimeout(() => {
+        steps.push(step);
+        const now = new Date().toISOString();
+        setDemo({ started, finished: null, step, steps: [...steps], at: now, count: 0, day: "demo" });
+        setDemoLog((l) => [{ id: id--, ts: now, cycle: cyc, team, message: `(demo) ${msg}` }, ...l]);
+      }, t);
+      t += ms;
+    });
+    setTimeout(() => {
+      const now = new Date().toISOString();
+      setDemo({ started, finished: now, step: null, steps: [...steps], at: now, count: 0, day: "demo", result: { opened: 1, exits: 0 } });
+      setDemoLog((l) => [{ id: id--, ts: now, cycle: cyc, team: null, message: "(demo) cycle done: 1 opened, 0 closed" }, ...l]);
+    }, t);
+    setTimeout(() => setDemo(null), t + 4000);
+  }, []);
+  const view = useMemo(() => {
+    if (!demo || !data.status) return data;
+    const saving = demo.step === "collect" ? new Date().toISOString() : data.status.activity?.prices_at ?? null;
+    return { ...data, status: { ...data.status, cycle: demo, activity: { prices_at: saving, orders_at: data.status.activity?.orders_at ?? null } } };
+  }, [data, demo]);
+  const world = useMemo(() => buildWorld(view), [view]);
   const all: (Team | SystemInfo)[] = [...world.teams, ...world.systems];
   const picked = selected && selected !== "supervisor" ? all.find((t) => t.id === selected) ?? null : null;
   const onBusy = useCallback((b: boolean) => setBusy(b), []);
@@ -196,6 +240,9 @@ export default function OfficePage() {
         <button className={`c3-ask ${selected === "supervisor" ? "on" : ""}`} onClick={() => setSelected(selected === "supervisor" ? null : "supervisor")}>
           Ask the Supervisor
         </button>
+        <button className="c3-demo" onClick={runDemo} disabled={!!demo} title="Play a simulated cycle to see what each animation means">
+          {demo ? "Demo running…" : "Demo"}
+        </button>
         <div className="c3-status">
           {(() => {
             // green text = OK; amber box = warning; red box = problem. The tooltip says what's wrong.
@@ -225,9 +272,11 @@ export default function OfficePage() {
 
       <div className="c3-stage">
         <img className="c3-logo" src={logoDark} alt="Darwin Options" />
-        <ModeBanner status={data.status} />
+        <ModeBanner status={view.status} demo={!!demo} />
         <MarketCountdown />
-        <CycleActivity status={data.status} />
+        <CycleActivity status={view.status} />
+        <button className="c3-logbtn" onClick={() => setShowLog(true)} title="Everything the teams did, by team and cycle">Activity Log</button>
+        {showLog && <ActivityLog onClose={() => setShowLog(false)} extra={demoLog} />}
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
             <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />

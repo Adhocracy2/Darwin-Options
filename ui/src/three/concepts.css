@@ -16,12 +16,12 @@
 .c3-status .bad { color: var(--c3-bad); font-weight: 600; }
 
 .c3-stage { position: relative; flex: 1; min-height: 0; }
-.scene3d { position: absolute; inset: 0; overflow: hidden; }
+.scene3d { position: absolute; inset: 0; overflow: hidden; isolation: isolate; z-index: 0; } /* keeps card z-order inside the scene */
 .c3-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--c3-muted); }
 .c3-legend { position: absolute; left: 16px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 7px 12px; border-radius: 10px; background: var(--c3-bar); color: var(--c3-muted); font-size: 12px; border: 1px solid var(--c3-line); z-index: 2; }
 .c3-legend i, .c3-agents i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .c3-hint { opacity: 0.8; }
-.c3-tip { position: absolute; left: 50%; top: 226px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
+.c3-tip { position: absolute; left: 50%; top: 200px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
 .c3-error { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--c3-bad); color: #fff; z-index: 2; }
 .c3-mobile { display: none; }
 @media (max-width: 899px) {
@@ -184,7 +184,7 @@
 .cc-save span { font-weight: 400; letter-spacing: 0.02em; color: #99e9f2; }
 
 /* the trader's heartbeat under the mode banner */
-.c3-activity { position: absolute; top: 190px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 4px 12px; border-radius: 999px;
+.c3-activity { position: absolute; top: 50px; left: 16px; z-index: 2; padding: 4px 12px; border-radius: 999px;
   font-size: 12px; color: var(--c3-muted); background: rgba(10, 15, 30, 0.65); border: 1px solid var(--c3-line); white-space: nowrap;
   pointer-events: none; display: flex; align-items: center; gap: 6px; }
 .c3-activity b { color: var(--c3-text); font-variant-numeric: tabular-nums; }
@@ -210,3 +210,35 @@
 .c3-winbtns button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--c3-line); background: rgba(255, 255, 255, 0.05); color: var(--c3-text); font: inherit; cursor: pointer; }
 .c3-winbtns button:hover { border-color: var(--c3-accent); }
 .c3-winbtns p { width: 100%; margin: 0; }
+
+/* demo button, demo banner */
+.c3-demo { padding: 6px 14px; border-radius: 999px; border: 1px solid #b197fc; background: rgba(177, 151, 252, 0.12); color: #e5dbff; font: inherit; font-weight: 600; cursor: pointer; }
+.c3-demo:hover:not(:disabled) { background: #b197fc; color: #1a1033; }
+.c3-demo:disabled { opacity: 0.7; cursor: default; }
+.c3-mode.demo { border-color: #b197fc; color: #e5dbff; }
+.c3-mode.demo .c3-mode-dot { background: #b197fc; box-shadow: 0 0 10px #b197fc; }
+
+/* Activity Log: tab on the left, panel swings in in 3D */
+.c3-logbtn { position: absolute; left: 0; top: 50%; z-index: 3; transform: translateY(-50%) rotate(-90deg); transform-origin: left top;
+  margin-top: 70px; padding: 8px 16px; border: 1px solid var(--c3-line); border-top: 0; border-radius: 0 0 10px 10px;
+  background: rgba(16, 23, 42, 0.92); color: var(--c3-text); font: inherit; font-weight: 600; letter-spacing: 0.06em; cursor: pointer; }
+.c3-logbtn:hover { color: var(--c3-accent); }
+.alog-scene { position: absolute; inset: 0; z-index: 4; perspective: 1400px; background: rgba(5, 8, 18, 0.35); }
+.alog { position: absolute; left: 24px; top: 24px; bottom: 24px; width: min(620px, 60vw); display: flex; flex-direction: column;
+  padding: 16px 18px; border-radius: 16px; background: linear-gradient(160deg, rgba(20, 30, 58, 0.96), rgba(10, 15, 30, 0.96));
+  border: 1px solid rgba(90, 216, 255, 0.35); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 40px rgba(90, 216, 255, 0.12);
+  transform-origin: left center; transform: rotateY(8deg); animation: alog-in 0.55s cubic-bezier(0.2, 0.9, 0.2, 1.1) both; }
+@keyframes alog-in { from { opacity: 0; transform: rotateY(-70deg) translateX(-60px); } to { opacity: 1; transform: rotateY(8deg); } }
+.alog header { display: flex; align-items: center; justify-content: space-between; }
+.alog h3 { margin: 0; font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; color: #bfefff; }
+.alog-filters { display: flex; gap: 8px; margin: 10px 0; }
+.alog-filters select { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--c3-line); background: rgba(0, 0, 0, 0.3); color: var(--c3-text); font: inherit; }
+.alog-list { list-style: none; margin: 0; padding: 0 4px 0 0; overflow-y: auto; flex: 1; }
+.alog-list li { display: grid; grid-template-columns: 64px 100px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 12.5px; animation: alog-row 0.35s ease-out both; }
+@keyframes alog-row { from { opacity: 0; transform: translateZ(-60px) translateX(-12px); } to { opacity: 1; transform: none; } }
+.alog-time { color: var(--c3-muted); font-variant-numeric: tabular-nums; }
+.alog-team { font-weight: 700; }
+.alog-msg { color: var(--c3-text); }
+.alog-cycle { color: var(--c3-muted); font-size: 11px; }
+.alog-empty { color: var(--c3-muted); padding: 12px 4px; display: block !important; }

@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS scans (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS activity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, cycle TEXT, team TEXT, message TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS activity_ts ON activity (ts);
 """
 
 
@@ -73,6 +76,29 @@ class Store:
         with self._conn() as c:
             c.execute("INSERT INTO events (ts, kind, position_id, message, data) VALUES (?,?,?,?,?)",
                       (self.clock(), kind, position_id, message, json.dumps(data or {}, default=str)))
+
+    def log_activity(self, cycle: str | None, team: str | None, message: str) -> None:
+        """One line in the activity log (what each team did, per cycle). Kept for 30 days."""
+        with self._conn() as c:
+            c.execute("INSERT INTO activity (ts, cycle, team, message) VALUES (?,?,?,?)", (self.clock(), cycle, team, message))
+            if c.execute("SELECT COUNT(*) FROM activity").fetchone()[0] > 50_000:
+                c.execute("DELETE FROM activity WHERE ts < datetime('now', '-30 days')")
+
+    def activity(self, limit: int = 300, team: str | None = None, cycle: str | None = None) -> list[dict]:
+        q, args = "SELECT * FROM activity WHERE 1=1", []
+        if team:
+            q += " AND team = ?"; args.append(team)
+        if cycle:
+            q += " AND cycle = ?"; args.append(cycle)
+        with self._conn() as c:
+            rows = c.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def activity_cycles(self, limit: int = 100) -> list[str]:
+        with self._conn() as c:
+            rows = c.execute("SELECT cycle FROM activity WHERE cycle IS NOT NULL GROUP BY cycle ORDER BY MAX(id) DESC LIMIT ?",
+                             (limit,)).fetchall()
+        return [r[0] for r in rows]
 
     def events(self, limit: int = 200) -> list[dict]:
         with self._conn() as c:

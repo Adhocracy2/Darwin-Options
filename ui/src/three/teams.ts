@@ -178,7 +178,7 @@ export function buildWorld(d: Inputs): World {
       alert: d.risk?.halted ? "Trading halted" : blocked && !approved ? `${blocked} blocked` : undefined,
     },
     {
-      id: "trading", name: "Trading", color: "#fab005",
+      id: "trading", name: "Trade Desk", color: "#fab005",
       job: "Places approved trades as one combo order and works the fill.",
       agents: [
         { name: "Orders", role: "Sends combo orders to IBKR", state: s?.allow_new_entries ? busy : "idle" },

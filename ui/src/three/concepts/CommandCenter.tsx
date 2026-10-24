@@ -228,6 +228,61 @@ function dataSaver() {
   };
 }
 
+/** Short-lived effects: streams of glowing dots along an arc, and an order flying out. */
+function effects(root: THREE.Group) {
+  type Stream = { curve: THREE.QuadraticBezierCurve3; dots: THREE.Mesh[]; until: number; t0: number };
+  const streams: Stream[] = [];
+  const dotGeo = new THREE.SphereGeometry(0.11, 10, 8);
+  type Fly = { mesh: THREE.Group; from: THREE.Vector3; to: THREE.Vector3; t: number; mat: THREE.MeshBasicMaterial };
+  const flies: Fly[] = [];
+  let clock = 0;
+  return {
+    /** dots flowing from `a` to `b` for `seconds` */
+    stream(a: THREE.Vector3, b: THREE.Vector3, color: string, seconds = 3, height = 2.5) {
+      const mid = a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, height, 0));
+      const curve = new THREE.QuadraticBezierCurve3(a.clone(), mid, b.clone());
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+      const dots = Array.from({ length: 14 }, () => { const m = new THREE.Mesh(dotGeo, mat); root.add(m); return m; });
+      streams.push({ curve, dots, until: clock + seconds, t0: clock });
+    },
+    /** an order leaving `from` towards `to` (and beyond), fading out */
+    fly(from: THREE.Vector3, to: THREE.Vector3) {
+      const g = new THREE.Group();
+      const mat = new THREE.MeshBasicMaterial({ color: "#ffd43b", transparent: true });
+      const body = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 4), mat);
+      body.rotation.z = -Math.PI / 2;
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10), new THREE.MeshBasicMaterial({
+        color: "#ffd43b", transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+      g.add(body, glow);
+      g.position.copy(from);
+      g.lookAt(to);
+      g.rotateY(-Math.PI / 2);
+      root.add(g);
+      flies.push({ mesh: g, from: from.clone(), to: to.clone(), t: 0, mat });
+    },
+    tick(dt: number) {
+      clock += dt;
+      for (let i = streams.length - 1; i >= 0; i--) {
+        const st = streams[i];
+        const ending = clock > st.until;
+        st.dots.forEach((d, k) => {
+          const u = ((clock - st.t0) * 0.8 + k / st.dots.length) % 1;
+          d.position.copy(st.curve.getPointAt(u));
+          d.visible = !ending || u > (clock - st.until) * 0.8; // drain away at the end
+        });
+        if (clock > st.until + 1.3) { st.dots.forEach((d) => d.removeFromParent()); streams.splice(i, 1); }
+      }
+      for (let i = flies.length - 1; i >= 0; i--) {
+        const f = flies[i];
+        f.t += dt / 2.2;
+        f.mesh.position.lerpVectors(f.from, f.to, Math.min(1.3, f.t * 1.3)).add(new THREE.Vector3(0, Math.sin(Math.min(1, f.t) * Math.PI) * 1.5, 0));
+        f.mat.opacity = Math.max(0, 1 - Math.max(0, f.t - 0.6) / 0.4);
+        if (f.t >= 1) { f.mesh.removeFromParent(); flies.splice(i, 1); }
+      }
+    },
+  };
+}
+
 function statusLine(a: THREE.Vector3, b: THREE.Vector3, height = 1.2) {
   const mid = a.clone().lerp(b, 0.5);
   mid.y += height;
@@ -282,7 +337,21 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
     send(id, nextRelay);
   };
 
+  // handoffs: a task travels from team A back along A's line to the brain, then out along B's line
+  type Hand = { a: string; b: string; t: number; leg: 0 | 1; mesh: THREE.Group };
+  const hands: Hand[] = [];
+  const handoff = (a: string, b: string) => {
+    if (!curves.has(a) || !curves.has(b) || a === b) return;
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colourOf(b) })),
+      new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: colourOf(b), transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false })));
+    g.position.copy(curves.get(a)!.getPointAt(1));
+    root.add(g);
+    hands.push({ a, b, t: 0, leg: 0, mesh: g });
+  };
+
   return {
+    handoff,
     burst(ids: string[]) { ids.forEach((id, i) => setTimeout(() => send(id), i * 250)); },
     tick(dt: number) {
       if (!relaying && targets().length) { relaying = true; nextRelay(); }
@@ -304,6 +373,17 @@ function taskRunner(root: THREE.Group, curves: Map<string, THREE.CubicBezierCurv
         const u = k.phase === "out" ? k.t : k.phase === "wait" ? 1 : 1 - k.t;
         k.mesh.position.copy(curve.getPointAt(u));
         k.mesh.rotation.y += dt * 3;
+      }
+      for (let i = hands.length - 1; i >= 0; i--) {
+        const h = hands[i];
+        h.t += dt / 0.9;
+        if (h.t >= 1) {
+          if (h.leg === 0) { h.leg = 1; h.t = 0; }
+          else { h.mesh.removeFromParent(); hands.splice(i, 1); continue; }
+        }
+        const c = curves.get(h.leg === 0 ? h.a : h.b)!;
+        h.mesh.position.copy(c.getPointAt(h.leg === 0 ? 1 - h.t : h.t));
+        h.mesh.rotation.y += dt * 4;
       }
     },
   };
@@ -595,7 +675,8 @@ function build(stage: Stage, world: World) {
 
   let speed = 1;
   let current = world;
-  let working: string[] = [], fast = false, lastFinished: string | null = null;
+  let working: string[] = [], fast = false, lastFinished: string | null = null, lastStep: string | null = null;
+  const fx = effects(root);
   // Market Data: saving prices for backtests
   const saver = dataSaver();
   const dataAt = centers.get("data");
@@ -633,16 +714,29 @@ function build(stage: Stage, world: World) {
     renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
     setSaving(w);
-    // animate only real work: a backtest, or the step the trader is on right now
+    // animate only real work: a backtest (fast relay), or the step the trader is on right now
     const cy = w.brain.cycle;
     const fresh = (ts?: string | null) => !!ts && Date.now() - new Date(ts).getTime() < 10 * 60_000;
     fast = w.brain.backtesting;
-    working = fast ? CYCLE : cy && !cy.finished && cy.step && fresh(cy.at) ? STEP_TEAMS[cy.step] ?? [] : [];
-    // a cycle that finished since the last update (and recently): replay its steps once
-    if (cy?.finished && cy.finished !== lastFinished) {
-      if (lastFinished !== null && fresh(cy.finished)) tasks.burst([...new Set(cy.steps.flatMap((x) => STEP_TEAMS[x] ?? []))]);
-      lastFinished = cy.finished;
+    working = fast ? CYCLE : [];
+    const step = cy && !cy.finished && cy.step && fresh(cy.at) ? cy.step : null;
+    const teamsNow = step ? STEP_TEAMS[step] ?? [] : [];
+    blocks.forEach((b, id) => b.setWorking(teamsNow.includes(id)));
+    if (step !== lastStep) {
+      if (step) {
+        const from = lastStep ? (STEP_TEAMS[lastStep] ?? []).slice(-1)[0] : null;
+        if (from && teamsNow[0]) tasks.handoff(from, teamsNow[0]); // the task passes from team to team
+        const dataAt = centers.get("data")!.clone().add(new THREE.Vector3(0, 0.8, 0));
+        if (step === "scan") fx.stream(GATEWAY.clone().add(new THREE.Vector3(0, 1.5, 0)), dataAt, "#66d9e8", 3.5, 3); // IB -> Market Data
+        if (step === "collect") fx.stream(dataAt, saver.group.position.clone(), "#99e9f2", 3, 1.2); // Market Data -> data store
+        if (step === "orders") {
+          const t = centers.get("trading")!.clone().add(new THREE.Vector3(0, 0.8, 0));
+          fx.fly(t, GATEWAY.clone().add(new THREE.Vector3(0, 1.5, 0))); // an order leaves the Trade Desk for IBKR
+        }
+      }
+      lastStep = step;
     }
+    if (cy?.finished && cy.finished !== lastFinished) lastFinished = cy.finished;
     gw.setUp(w.brain.gatewayUp);
     ib.setUp(!w.brain.gatewayUp ? null : w.links.gatewayIbkr === "down" ? false : true);
     speed = w.brain.marketOpen ? 1 : 0.35;
@@ -685,6 +779,7 @@ function build(stage: Stage, world: World) {
     ringOuterMat.opacity = 0.03 + 0.06 * pulse;
     tasks.tick(dt);
     saver.tick(t, dt);
+    fx.tick(dt);
     blocks.forEach((b) => b.tick(t));
     gw.tick(t);
     isp.tick(t);

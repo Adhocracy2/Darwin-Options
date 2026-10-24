@@ -129,7 +129,28 @@ export type TeamBlock = {
   update: (team: Team) => void;
   tick: (t: number) => void;
   setHighlight: (on: boolean) => void;
+  setWorking: (on: boolean) => void; // glowing border while the team is doing something
 };
+
+/** A glowing rounded-rectangle border, lying flat, just outside a w x d platform. */
+function workFrame(w: number, d: number, color: string) {
+  const outer = new THREE.Shape(), r = 0.45, pad = 0.18, ow = w + pad * 2, od = d + pad * 2, t = 0.09;
+  const rr = (sh: THREE.Shape | THREE.Path, x: number, y: number, ww: number, hh: number, rad: number) => {
+    sh.moveTo(x + rad, y); sh.lineTo(x + ww - rad, y); sh.quadraticCurveTo(x + ww, y, x + ww, y + rad);
+    sh.lineTo(x + ww, y + hh - rad); sh.quadraticCurveTo(x + ww, y + hh, x + ww - rad, y + hh);
+    sh.lineTo(x + rad, y + hh); sh.quadraticCurveTo(x, y + hh, x, y + hh - rad); sh.lineTo(x, y + rad); sh.quadraticCurveTo(x, y, x + rad, y);
+  };
+  rr(outer, -ow / 2, -od / 2, ow, od, r);
+  const hole = new THREE.Path();
+  rr(hole, -ow / 2 + t, -od / 2 + t, ow - 2 * t, od - 2 * t, r - t);
+  outer.holes.push(hole);
+  const geo = new THREE.ShapeGeometry(outer, 8);
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.y = 0.04;
+  return { mesh: m, mat };
+}
 
 /** A team: a floor with its desks. `floor` makes the slab material(s) from the team colour. */
 export function makeTeamBlock(team: Team, opts: {
@@ -164,11 +185,19 @@ export function makeTeamBlock(team: Team, opts: {
   });
   const update = (t: Team) => t.agents.forEach((a, i) => desks[i]?.setState(a.state));
   update(team);
+  const frame = workFrame(w, d, "#7cf9ff");
+  g.add(frame.mesh);
+  let working = false;
   return {
     group: g, size: { w, d },
     signature: `${team.id}:${team.agents.length}`,
     update,
-    tick: (t) => desks.forEach((x) => x.tick(t)),
+    tick: (t) => {
+      desks.forEach((x) => x.tick(t));
+      const target = working ? 0.65 + 0.3 * Math.sin(t * 6) : 0;
+      frame.mat.opacity += (target - frame.mat.opacity) * 0.15;
+    },
+    setWorking(on) { working = on; },
     setHighlight(on) {
       g.userData.baseY ??= g.position.y; // lift relative to where it was placed (top-ring platforms float)
       g.position.y = g.userData.baseY + (on ? 0.12 : 0);

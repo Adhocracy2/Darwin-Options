@@ -115,3 +115,16 @@ def test_cycle_reports_its_steps(engine):
     engine.run_once()
     st, _ = engine.store.get_setting(CYCLE_KEY)
     assert st["count"] == 2 and st["next_at"] > st["finished"]
+
+
+def test_activity_log(engine):
+    from fastapi.testclient import TestClient
+    from darwin_options.api.app import create_app
+    engine.run_once()
+    client = TestClient(create_app(engine.cfg, engine))
+    a = client.get("/api/activity").json()
+    teams = {r["team"] for r in a["rows"]}
+    assert {"portfolio", "exits", "scanner", "risk"} <= teams and len(a["cycles"]) == 1
+    only = client.get("/api/activity", params={"team": "risk"}).json()["rows"]
+    assert only and all(r["team"] == "risk" for r in only)
+    assert any("cycle done" in r["message"] for r in a["rows"])

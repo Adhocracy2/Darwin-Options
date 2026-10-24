@@ -27,6 +27,16 @@ from . import analysis
 
 RISK_RESET_KEY = "risk_reset"
 CYCLE_KEY = "cycle_progress"  # the current/last cycle's steps, for the dashboard
+# which team does each cycle step, and how the activity log describes it
+STEP_ACTIVITY = {
+    "reconcile": ("portfolio", "checking positions against IBKR"),
+    "manage": ("exits", "checking open trades against the exit rules"),
+    "scan": ("scanner", "fetching option chains and building trade ideas"),
+    "risk": ("risk", "checking ideas against the risk rules"),
+    "orders": ("trading", "placing an order"),
+    "collect": ("data", "saving extra option prices for backtests"),
+    "snapshot": ("portfolio", "recording equity"),
+}
 
 log = logging.getLogger(__name__)
 
@@ -389,6 +399,14 @@ class Engine:
         self.store.save_scan(trim_scan(rows))
         return opened
 
+    def _log(self, team: str | None, message: str) -> None:
+        try:
+            st = self._cycle_state
+            cyc = f"{st.get('day', '')} #{st.get('count', '?')}" if st else None
+            self.store.log_activity(cyc, team, message)
+        except Exception:
+            log.debug("couldn't write the activity log", exc_info=True)
+
     def _received(self, notices_before: dict) -> dict | None:
         """What this cycle got back from IBKR: prices, option chains, quotes, account/positions, notices."""
         rec = getattr(self.md, "received", None)
@@ -501,6 +519,8 @@ class Engine:
         st = self._cycle_state
         if name:
             st["steps"] = st.get("steps", []) + [name]
+            team, what = STEP_ACTIVITY.get(name, (None, name))
+            self._log(team, what)
         st.update(step=name, at=now(), **extra)
         try:
             self.store.set_setting(CYCLE_KEY, st)
@@ -540,6 +560,19 @@ class Engine:
         from datetime import datetime, timedelta
         nxt = (datetime.fromisoformat(now()) + timedelta(seconds=self.loop_interval_s)).isoformat() if self.loop_interval_s else None
         received = self._received(notices_before)
+        if received:
+            chains = [c for c in received["chains"] if not c["cached"]]
+            self._log("data", f"received {len(received['spots'])} prices and {sum(c['quotes'] for c in chains)} option quotes "
+                              f"in {len(chains)} chains from IBKR")
+        scan = self.store.latest_scan()
+        if scan.get("ts"):
+            ok = sum(1 for c in scan["candidates"] if c.get("approved"))
+            self._log("risk", f"{len(scan['candidates'])} ideas checked, {ok} approved")
+        for p in result["opened"]:
+            self._log("trading", f"opened position {p}")
+        for r in result["exits"]:
+            self._log("exits", f"closed a position: {r}")
+        self._log(None, f"cycle done: {len(result['opened'])} opened, {len(result['exits'])} closed")
         self._step(None, finished=now(), next_at=nxt, result={"exits": len(result["exits"]), "opened": len(result["opened"])},
                    received=received)
         self._ibc_heal(received)

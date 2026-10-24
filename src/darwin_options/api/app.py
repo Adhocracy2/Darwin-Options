@@ -286,6 +286,12 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
     def events(limit: int = 200):
         return engine.store.events(limit)
 
+    @app.get("/api/activity")
+    def activity(limit: int = 300, team: str | None = None, cycle: str | None = None):
+        """What each team did, newest first; filter by team or cycle ("YYYY-MM-DD #n")."""
+        rows = engine.store.activity(max(1, min(limit, 2000)), team or None, cycle or None)
+        return {"rows": rows, "cycles": engine.store.activity_cycles()}
+
     @app.get("/api/equity")
     def equity():
         return engine.store.snapshots()
