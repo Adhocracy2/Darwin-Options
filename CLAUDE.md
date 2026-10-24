@@ -131,6 +131,7 @@ renamed. Don't reintroduce "flick" names.
 proxying to a dev API on :8010 that runs the working copy's `src/` and restarts on edits (IBKR client id 23, the
 shared config/journal, paper only). `scripts/dev.sh stop` stops it; logs in `var/dev/`. It doesn't survive a reboot.
 Make changes there live; **don't commit, push or deploy until the owner asks** (push to main = prod deploy).
+Work is committed on the `dev` branch (pushing it runs CI only); deploying = merging `dev` into `main` and pushing.
 
 ## Checks before every push
 
