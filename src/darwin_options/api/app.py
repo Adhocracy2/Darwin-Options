@@ -438,6 +438,19 @@ def create_app(cfg: Config | None = None, engine: Engine | None = None) -> FastA
         out.sort(key=lambda x: x.get("ts") or "", reverse=True)
         return out[:40]
 
+    # ---- IB Gateway windows on AI1's desktop -------------------------------------
+
+    @app.post("/api/gateway/minimize")
+    def gateway_minimize(target: str = "gateway"):
+        """Minimize the IB Gateway window ("gateway") or its Login Messages window ("messages")."""
+        from .. import desktop
+        try:
+            return {"minimized": desktop.minimize_in_desktop(target)}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            raise HTTPException(503, f"couldn't reach the desktop: {e}")
+
     # ---- backtests ----------------------------------------------------------------
 
     bt = BacktestRunner(Path(cfg.db_path).parent, cfg.record.path, lambda: engine.cfg)

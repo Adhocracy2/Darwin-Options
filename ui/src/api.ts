@@ -330,6 +330,7 @@ export const api = {
   backtest: (id: string) => req<BacktestRun>(`/api/backtests/${id}`),
   startBacktest: (b: { dataset: string; start?: string; end?: string; capital?: number }) => req<BacktestRun>("/api/backtests", "POST", b),
   stopBacktest: (id: string) => req<{ stopping: string }>(`/api/backtests/${id}/stop`, "POST"),
+  minimizeGateway: (target: "gateway" | "messages") => req<{ minimized: string[] }>(`/api/gateway/minimize?target=${target}`, "POST"),
   metrics: (fresh = false) => req<Metrics>(`/api/metrics${fresh ? "?fresh=true" : ""}`),
   news: () => req<NewsItem[]>("/api/news"),
   compare: (symbols = "SPY,SPX", days = 30) => req<Record<string, { ts: string; price: number }[]>>(`/api/compare?symbols=${symbols}&days=${days}`),

@@ -204,3 +204,9 @@
 .c3-pill.bad { color: #ff4d4d; border-color: #ff3030; background: rgba(255, 48, 48, 0.14); animation: c3-alarm 1.2s ease-in-out infinite; }
 .c3-pill.unknown { color: var(--c3-muted); border-color: var(--c3-line); }
 @keyframes c3-alarm { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 48, 48, 0.0); } 50% { box-shadow: 0 0 10px 2px rgba(255, 48, 48, 0.55); } }
+
+.c3-winbtns { margin: 4px 0 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.c3-winbtns h4 { width: 100%; margin: 0; }
+.c3-winbtns button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--c3-line); background: rgba(255, 255, 255, 0.05); color: var(--c3-text); font: inherit; cursor: pointer; }
+.c3-winbtns button:hover { border-color: var(--c3-accent); }
+.c3-winbtns p { width: 100%; margin: 0; }

@@ -46,6 +46,25 @@ function useData() {
   return d;
 }
 
+/** Buttons that minimize IB Gateway's windows on AI1's desktop. */
+function GatewayWindows() {
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = (target: "gateway" | "messages") => {
+    setMsg("…");
+    api.minimizeGateway(target)
+      .then((r) => setMsg(r.minimized.length ? `Minimised: ${[...new Set(r.minimized)].join(", ")}` : "No such window open"))
+      .catch((e) => setMsg(e instanceof Error ? e.message : String(e)));
+  };
+  return (
+    <div className="c3-winbtns">
+      <h4>IB Gateway on AI1's desktop</h4>
+      <button onClick={() => run("gateway")}>Minimise gateway window</button>
+      <button onClick={() => run("messages")}>Hide login messages</button>
+      {msg && <p className="c3-job">{msg}</p>}
+    </div>
+  );
+}
+
 function Details({ team, onClose, status }: { team: Team | SystemInfo; onClose: () => void; status: Status | null }) {
   return (
     <aside className="c3-panel">
@@ -57,6 +76,7 @@ function Details({ team, onClose, status }: { team: Team | SystemInfo; onClose: 
       {team.link && <a className="c3-link" href={team.link.href} target="_blank" rel="noopener noreferrer">{team.link.label} ↗</a>}
       <dl>{team.rows.map((r) => <div key={r.label}><dt>{r.label}</dt><dd className={r.tone}>{r.value}</dd></div>)}</dl>
       {team.id === "data" && <ReceivedCard status={status} compact />}
+      {(team.id === "gateway" || team.id === "technology") && <GatewayWindows />}
       {team.agents.length > 0 && <h4>At the desks ({team.agents.length})</h4>}
       <ul className="c3-agents">
         {team.agents.map((a, i) => (
