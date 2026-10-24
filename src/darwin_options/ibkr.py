@@ -73,6 +73,8 @@ class IBSession:
         self.loop = asyncio.new_event_loop()
         self._connect_lock = asyncio.Lock()  # used only on self.loop
         self.link: dict = {"ibkr": None, "farms": {}, "changed_at": None}
+        self.notices: dict[int, int] = {}  # IBKR error/notice code -> times received (for the dashboard)
+        self.notice_text: dict[int, str] = {}
         threading.Thread(target=self.loop.run_forever, name="ib-loop", daemon=True).start()
         try:  # connect now so config errors show up early
             self.call(lambda: asyncio.sleep(0))
@@ -83,6 +85,8 @@ class IBSession:
         """Track IB Gateway's own link to IBKR's servers and its data farms, from its notices.
         1100 lost / 1101-1102 restored; 2104/2106/2158 a farm is OK, 2103/2105/2157 broken,
         2107/2108 inactive (fine: it wakes up on demand)."""
+        self.notices[code] = self.notices.get(code, 0) + 1
+        self.notice_text.setdefault(code, message.split(",")[0][:120])
         now = time.time()
         if code == 1100:
             self.link.update(ibkr=False, changed_at=now)

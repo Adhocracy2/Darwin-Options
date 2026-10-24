@@ -5,6 +5,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { Candidate, Event, Performance, Position, RiskState, Status } from "../api";
 import { api } from "../api";
+import { ReceivedCard } from "../components/ReceivedCard";
 import { ChatPanel } from "./ChatPanel";
 import { formatCountdown, marketClock } from "./marketClock";
 import { ago, buildWorld, STATE_COLOR, STATE_LABEL, type AgentState, type SystemInfo, type Team } from "./teams";
@@ -45,7 +46,7 @@ function useData() {
   return d;
 }
 
-function Details({ team, onClose }: { team: Team | SystemInfo; onClose: () => void }) {
+function Details({ team, onClose, status }: { team: Team | SystemInfo; onClose: () => void; status: Status | null }) {
   return (
     <aside className="c3-panel">
       <button className="c3-x" onClick={onClose} aria-label="Close">×</button>
@@ -55,6 +56,7 @@ function Details({ team, onClose }: { team: Team | SystemInfo; onClose: () => vo
       {team.alert && <div className="c3-alert">{team.alert}</div>}
       {team.link && <a className="c3-link" href={team.link.href} target="_blank" rel="noopener noreferrer">{team.link.label} ↗</a>}
       <dl>{team.rows.map((r) => <div key={r.label}><dt>{r.label}</dt><dd className={r.tone}>{r.value}</dd></div>)}</dl>
+      {team.id === "data" && <ReceivedCard status={status} compact />}
       {team.agents.length > 0 && <h4>At the desks ({team.agents.length})</h4>}
       <ul className="c3-agents">
         {team.agents.map((a, i) => (
@@ -76,6 +78,39 @@ function MarketCountdown() {
       <span>{c.open ? "Market open · closes in" : "Market closed · opens in"}</span>
       <b>{formatCountdown(c.inMs)}</b>
       {c.early && <em>{c.open ? "early close 1:00pm NY" : "early close that day"}</em>}
+    </div>
+  );
+}
+
+const STEP_LABEL: Record<string, string> = {
+  reconcile: "Portfolio checking positions with IBKR", manage: "Exits checking open trades", scan: "Market Data + Scanner building ideas",
+  risk: "Risk Desk checking ideas", orders: "Trading placing an order", collect: "Market Data saving prices", snapshot: "Portfolio recording equity",
+};
+
+/** The trader's heartbeat: what it's doing right now, how many cycles today, when the next one starts. */
+function CycleActivity({ status }: { status: Status | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const c = status?.cycle;
+  if (!c) return <div className="c3-activity idle">No trading cycle has run yet</div>;
+  const hhmm = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const running = !c.finished && now - new Date(c.at).getTime() < 10 * 60_000;
+  const count = c.count ? `Cycle ${c.count} today` : "Cycle";
+  if (running) {
+    return (
+      <div className="c3-activity running">
+        <i />{count} · <b>{STEP_LABEL[c.step ?? ""] ?? "working"}</b> · started {hhmm(c.started)}
+      </div>
+    );
+  }
+  const r = c.result;
+  const did = c.error ? `failed: ${c.error}` : r ? `${r.opened} opened, ${r.exits} closed` : "";
+  const next = c.next_at && status?.account?.is_market_open ? Math.max(0, new Date(c.next_at).getTime() - now) : null;
+  const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+  return (
+    <div className={`c3-activity ${c.error ? "error" : "idle"}`}>
+      {count} done at {hhmm(c.finished ?? c.at)}{did && ` · ${did}`}
+      {next !== null && <> · next cycle in <b>{next > 0 ? mmss(next) : "a moment"}</b></>}
     </div>
   );
 }
@@ -161,13 +196,14 @@ export default function OfficePage() {
         <img className="c3-logo" src={logoDark} alt="Darwin Options" />
         <ModeBanner status={data.status} />
         <MarketCountdown />
+        <CycleActivity status={data.status} />
         {data.at ? (
           <Suspense fallback={<div className="c3-loading">Loading 3D…</div>}>
             <Office world={world} selected={selected} onSelect={setSelected} onHover={setHovered} busy={busy} burst={burst} />
           </Suspense>
         ) : <div className="c3-loading">{data.error ? "Couldn't reach the dashboard API." : "Loading data…"}</div>}
         {selected === "supervisor" && <ChatPanel onClose={() => setSelected(null)} onBusy={onBusy} onTools={onTools} />}
-        {picked && <Details team={picked} onClose={() => setSelected(null)} />}
+        {picked && <Details team={picked} onClose={() => setSelected(null)} status={data.status} />}
         <div className="c3-legend">
           {(Object.keys(STATE_COLOR) as AgentState[]).map((s) => <span key={s}><i style={{ background: STATE_COLOR[s] }} />{STATE_LABEL[s]}</span>)}
           <span className="c3-sep" />

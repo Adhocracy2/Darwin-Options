@@ -95,6 +95,18 @@ class RecordingMarketData:
         self.md, self.rec = md, recorder
         self._last_spot: dict[str, float] = {}
         self._recorded: list[Chain] = []
+        self.reset_received()
+
+    # ---- what came back from the data source (per cycle, for the dashboard) ----
+    def reset_received(self) -> None:
+        self.received: dict = {"spots": {}, "chains": [], "quote_requests": 0, "quotes": 0, "quotes_with_greeks": 0,
+                               "histories": 0}
+
+    def _count_chain(self, ch: Chain, dte_min: int, dte_max: int, cached: bool) -> None:
+        exps = sorted({q.contract.expiry.isoformat() for q in ch.quotes})
+        self.received["chains"].append({
+            "symbol": ch.underlying, "dte": [dte_min, dte_max], "expiries": exps, "quotes": len(ch.quotes),
+            "with_greeks": sum(1 for q in ch.quotes if q.delta is not None), "cached": cached})
 
     def __getattr__(self, name):
         return getattr(self.md, name)
@@ -104,12 +116,14 @@ class RecordingMarketData:
 
     def spot(self, symbol: str) -> float:
         px = self.md.spot(symbol)
+        self.received["spots"][symbol] = px
         self._last_spot[symbol] = px
         self.rec.spot(symbol, px)
         return px
 
     def closes(self, symbol: str, days: int = 60) -> list[float]:
         out = self.md.closes(symbol, days)
+        self.received["histories"] += 1
         self.rec.closes(symbol, out)
         return out
 
@@ -117,7 +131,10 @@ class RecordingMarketData:
               strike_pct: float = 0.35) -> Chain:
         ch = self.md.chain(symbol, dte_min, dte_max, right, strike_pct)
         if any(c is ch for c in self._recorded):  # a reused (cached) chain: already saved
+            self._count_chain(ch, dte_min, dte_max, cached=True)
             return ch
+        self._count_chain(ch, dte_min, dte_max, cached=False)
+        self.received["spots"][symbol] = ch.spot
         self._recorded = (self._recorded + [ch])[-50:]
         self._last_spot[symbol] = ch.spot
         self.rec.spot(symbol, ch.spot)  # chains fetch price and history internally, past this wrapper
@@ -127,6 +144,9 @@ class RecordingMarketData:
 
     def quotes(self, option_symbols: list[str]) -> dict[str, OptionQuote]:
         out = self.md.quotes(option_symbols)
+        self.received["quote_requests"] += len(option_symbols)
+        self.received["quotes"] += len(out)
+        self.received["quotes_with_greeks"] += sum(1 for q in out.values() if q.delta is not None)
         for und in {q.contract.underlying for q in out.values()}:
             self.rec.quotes([q for q in out.values() if q.contract.underlying == und], self._last_spot.get(und))
         return out

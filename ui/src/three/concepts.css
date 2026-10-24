@@ -21,7 +21,7 @@
 .c3-legend { position: absolute; left: 16px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 7px 12px; border-radius: 10px; background: var(--c3-bar); color: var(--c3-muted); font-size: 12px; border: 1px solid var(--c3-line); z-index: 2; }
 .c3-legend i, .c3-agents i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .c3-hint { opacity: 0.8; }
-.c3-tip { position: absolute; left: 50%; top: 200px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
+.c3-tip { position: absolute; left: 50%; top: 226px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px; background: var(--c3-panel); border: 1px solid var(--c3-line); z-index: 2; pointer-events: none; }
 .c3-error { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--c3-bad); color: #fff; z-index: 2; }
 .c3-mobile { display: none; }
 @media (max-width: 899px) {
@@ -176,3 +176,23 @@
 .c3-clock b { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--c3-text); letter-spacing: 0.03em; }
 .c3-clock.open b { color: var(--c3-good); }
 .c3-clock em { font-style: normal; color: var(--c3-warn); }
+
+/* Market Data saving prices for backtests */
+.cc-save { display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.12em; color: #c5f6fa; background: rgba(8, 40, 50, 0.85); border: 1px solid #22b8cf; pointer-events: none; }
+.cc-save i { width: 7px; height: 7px; border-radius: 50%; background: #66d9e8; box-shadow: 0 0 8px #66d9e8; animation: c3-pulse 0.8s ease-in-out infinite; }
+.cc-save span { font-weight: 400; letter-spacing: 0.02em; color: #99e9f2; }
+
+/* the trader's heartbeat under the mode banner */
+.c3-activity { position: absolute; top: 190px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 4px 12px; border-radius: 999px;
+  font-size: 12px; color: var(--c3-muted); background: rgba(10, 15, 30, 0.65); border: 1px solid var(--c3-line); white-space: nowrap;
+  pointer-events: none; display: flex; align-items: center; gap: 6px; }
+.c3-activity b { color: var(--c3-text); font-variant-numeric: tabular-nums; }
+.c3-activity.running { border-color: #51cf66; color: #d3f9d8; }
+.c3-activity.running i { width: 8px; height: 8px; border-radius: 50%; background: #51cf66; box-shadow: 0 0 8px #51cf66; animation: c3-pulse 0.8s ease-in-out infinite; }
+.c3-activity.error { border-color: #ff6b6b; color: #ffc9c9; }
+/* the IBKR-received card inside the (always dark) 3D side panel */
+.c3-panel .rx { color: var(--c3-text); }
+.c3-panel .rx h2 { color: var(--c3-text); }
+.c3-panel .rx .muted, .c3-panel .rx-tiles span, .c3-panel .rx-spots { color: var(--c3-muted); }
+.c3-panel .rx-notices li { color: var(--c3-text); }

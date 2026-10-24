@@ -76,11 +76,23 @@ class FakeIB:
         return out
 
     def reqMktData(self, c, *_a):
-        """A streaming ticker: always shows the synthetic market's current price."""
+        """A streaming ticker: the stock's current price, or an option's quote and greeks."""
+        if c.secType != "STK":
+            self.option_streams = getattr(self, "option_streams", 0) + 1
+            [t] = self._option_tickers([c])
+            return t
         self.streams = getattr(self, "streams", []) + [c.symbol]
         md = self.md
         return SimpleNamespace(contract=c, marketPrice=lambda: md.spot(c.symbol), last=None, close=None,
                                time=datetime.now(timezone.utc))
+
+    def _option_tickers(self, cs):
+        out = []
+        for c in cs:
+            q = self.md.quotes([from_ib_option(c).symbol])[from_ib_option(c).symbol]
+            g = SimpleNamespace(impliedVol=q.iv, delta=q.delta, gamma=q.gamma, theta=q.theta, vega=q.vega)
+            out.append(SimpleNamespace(contract=c, bid=q.bid, ask=q.ask, modelGreeks=g))
+        return out
 
     def cancelMktData(self, c):
         self.cancelled = getattr(self, "cancelled", []) + [c.symbol]
@@ -281,13 +293,19 @@ def _requested_options(fake):
 
 
 def _count_requests(fake):
-    orig = fake.reqTickersAsync
+    """Record every quote request: one-off snapshots (stocks) and option quote subscriptions."""
+    orig_snap, orig_stream = fake.reqTickersAsync, fake.reqMktData
     fake.ticker_requests = []
 
     async def counting(*cs):
         fake.ticker_requests.append(cs)
-        return await orig(*cs)
-    fake.reqTickersAsync = counting
+        return await orig_snap(*cs)
+
+    def streaming(c, *a):
+        if c.secType != "STK":
+            fake.ticker_requests.append((c,))
+        return orig_stream(c, *a)
+    fake.reqTickersAsync, fake.reqMktData = counting, streaming
 
 
 def test_chain_asks_only_for_out_of_the_money_strikes(ib_engine):
@@ -321,9 +339,9 @@ def test_unanswered_request_skips_the_cycle_fast(ib_engine):
     import time as _time
     eng, fake, md = ib_engine
 
-    async def hang(*cs):
+    async def hang(*a, **k):
         await asyncio.sleep(30)
-    fake.reqTickersAsync = hang
+    fake.reqContractDetailsAsync = hang  # the gateway stops answering mid-scan
     eng.md.s.cfg.timeout_s = 1
     t0 = _time.monotonic()
     out = eng.run_once(force=True)
@@ -433,3 +451,36 @@ def test_gateway_link_to_ibkr_from_notices(ib_engine):
     assert g["ibkr"] is False and g["farms"]["usfarm"] == "broken"
     s._on_notice(-1, 1102, "Connectivity between IBKR and Trader Workstation has been restored - data maintained.")
     assert s.link_status()["ibkr"] is True
+
+
+
+def test_option_quotes_are_subscribed_then_cancelled(ib_engine):
+    eng, fake, md = ib_engine
+    fake.cancelled = []
+    ch = eng.md.chain("SPY", 30, 50)
+    assert ch.quotes and fake.option_streams == len([c for c in fake.cancelled if c == "SPY"])
+
+
+def test_snapshot_quote_mode_still_works(ib_engine):
+    eng, fake, md = ib_engine
+    eng.md.s.cfg.quote_mode = "snapshot"
+    _count_requests(fake)
+    fake.option_streams = 0
+    assert eng.md.chain("SPY", 30, 50).quotes and fake.option_streams == 0
+
+
+def test_cycle_lists_what_ibkr_sent(ib_engine, tmp_path):
+    from darwin_options.engine import CYCLE_KEY
+    from darwin_options.recorder import Recorder, RecordingMarketData
+    eng, fake, md = ib_engine
+    eng.md = RecordingMarketData(eng.md, Recorder(str(tmp_path / "md.db")))
+    eng.session = eng.md.md.s
+    eng.session._on_notice(-1, 10197, "No market data during competing live session, contract: X")
+    orig = eng.collect
+    eng.collect = lambda: (eng.session._on_notice(-1, 10197, "No market data during competing live session"), orig())
+    eng.run_once()
+    st, _ = eng.store.get_setting(CYCLE_KEY)
+    r = st["received"]
+    assert r["spots"]["SPY"] > 0 and r["chains"] and all(c["symbol"] for c in r["chains"])
+    assert sum(c["quotes"] for c in r["chains"]) > 0 and r["chains"][0]["expiries"]
+    assert r["notices"] == [{"code": 10197, "count": 1, "text": "No market data during competing live session"}]

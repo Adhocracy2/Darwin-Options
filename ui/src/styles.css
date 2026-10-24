@@ -213,3 +213,16 @@ button.link:disabled { opacity: 0.5; cursor: not-allowed; }
 tr.selected td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .bt-title { font-size: 16px; margin: 4px 0 12px; }
 .tile .value.pos { color: var(--good); } .tile .value.neg { color: var(--critical); }
+
+/* what IBKR sent last cycle */
+.rx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 6px 0 8px; }
+.rx-tiles div { display: flex; flex-direction: column; }
+.rx-tiles b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.rx-tiles span { font-size: 12px; color: var(--text-secondary); }
+.rx-spots { color: var(--text-secondary); margin: 0 0 8px; }
+.rx-notices h4 { margin: 8px 0 4px; font-size: 13px; }
+.rx-notices ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.rx.compact { margin: 0 0 14px; }
+.rx.compact h2 { font-size: 13px; margin: 0 0 6px; }
+.rx.compact .rx-tiles { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.rx.compact .rx-tiles b { font-size: 16px; }

@@ -110,3 +110,8 @@ def test_cycle_reports_its_steps(engine):
     st, _ = engine.store.get_setting(CYCLE_KEY)
     assert st["finished"] and st["step"] is None and st["result"]["opened"] >= 1
     assert st["steps"][:4] == ["reconcile", "manage", "scan", "risk"] and "orders" in st["steps"] and st["steps"][-1] == "snapshot"
+    assert st["count"] == 1 and st["next_at"] is None
+    engine.loop_interval_s = 300
+    engine.run_once()
+    st, _ = engine.store.get_setting(CYCLE_KEY)
+    assert st["count"] == 2 and st["next_at"] > st["finished"]

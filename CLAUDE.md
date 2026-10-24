@@ -159,6 +159,11 @@ deploys to AI1 once its runner is online, so only push tested work there.
   5-minute stop timeout (trader SIGKILLed mid-cycle). Now: only out-of-the-money strikes (LEAPS
   chains excepted), chains reused for `ibkr.chain_cache_s` (600s; same-day never), and an
   unanswered request raises `GatewayNotAnswering` and skips the rest of the cycle.
+- **Option quote snapshots take ~11s per batch on live data** (IBKR waits before saying the snapshot is done), which
+  made cycles ~10 minutes long on 2026-10-23. `_tickers` now subscribes each batch of 50, takes prices as they
+  arrive (up to 3 s), then cancels (`ibkr.quote_mode: stream`; `snapshot` is the fallback). Untested in market
+  hours as of 2026-10-24 (weekend): check cycle times on Monday.
+- IB Gateway needs a full manual login (password + phone) about weekly; its daily auto-restart can't do that.
 - **Stock snapshots take ~11s on IBKR** (delayed data: it waits for fields that never arrive). `spot()` keeps one
   streaming subscription per ticker instead (restarted after a reconnect or 5 min of silence in market hours);
   daily closes are cached for an hour. The dashboard reads prices from `var/marketdata.db` first (saved by

@@ -41,6 +41,7 @@ export type Brain = {
   equity: number | null;
   backtesting: boolean; // a backtest is running (the team relay runs fast to show it)
   cycle: Status["cycle"]; // what the trader is doing now (step) or did in its last cycle
+  pricesSavedAt: string | null; // when the recorder last saved a price (for backtests)
 };
 
 /** How busy a data link is: dots move fast (active), slowly (idle), not at all (down, red line). */
@@ -138,6 +139,7 @@ export function buildWorld(d: Inputs): World {
       ],
       headline: { value: String(universe.length), label: universe.length === 1 ? "ticker" : "tickers" },
       rows: [
+        { label: "Prices saved", value: ago(s?.activity?.prices_at ?? null) },
         { label: "IB Gateway", value: gatewayUp ? "Connected" : "Offline", tone: gatewayUp ? "pos" : "neg" },
         { label: "Market", value: marketOpen ? "Open" : "Closed" },
         { label: "Watching", value: universe.join(" · ") || "–" },
@@ -168,6 +170,7 @@ export function buildWorld(d: Inputs): World {
       ],
       headline: { value: String(blocked), label: "ideas blocked" },
       rows: [
+        { label: "Last checked", value: ago(d.scan.ts) },
         { label: "Passed", value: String(approved), tone: approved ? "pos" : undefined },
         { label: "Money at risk", value: riskCap ? `${usd(openRisk)} of ${usd(riskCap)}` : usd(openRisk) },
         { label: "Top reason", value: topBlock ?? "–" },
@@ -202,6 +205,7 @@ export function buildWorld(d: Inputs): World {
       headline: { value: String(d.open.length), label: d.open.length === 1 ? "open position" : "open positions" },
       rows: [
         { label: "Unrealized", value: signed(unreal), tone: unreal >= 0 ? "pos" : "neg" },
+        { label: "Re-priced", value: ago(s?.cycle?.finished ?? null) },
         { label: "Max loss", value: usd(openRisk) },
         { label: "Account", value: usd(d.risk?.equity ?? s?.account?.equity) },
       ],
@@ -217,6 +221,7 @@ export function buildWorld(d: Inputs): World {
       ],
       headline: { value: String(closes.length), label: closes.length === 1 ? "exit so far" : "exits so far" },
       rows: [
+        { label: "Last checked", value: ago(s?.cycle?.finished ?? null) },
         { label: "Watching", value: `${d.open.length} position${d.open.length === 1 ? "" : "s"}` },
         { label: "Last exit", value: closes.length ? ago(closes[closes.length - 1].ts) : "–" },
       ],
@@ -396,6 +401,7 @@ export function buildWorld(d: Inputs): World {
       lastScan: d.scan.ts, candidates: cands.length, approved, equity: d.risk?.equity ?? s?.account?.equity ?? null,
       backtesting: !!s?.backtest,
       cycle: s?.cycle ?? null,
+      pricesSavedAt: s?.activity?.prices_at ?? null,
     },
     flow: { scanned: cands.length, passedChecks: approved, ordered: opensToday, topBlock },
   };

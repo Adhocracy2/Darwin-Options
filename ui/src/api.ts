@@ -57,8 +57,9 @@ export type Status = {
   } | null;
   version?: string; // deployed git revision (short)
   backtest?: { id: string; done: number; total: number; at: string | null; label: string } | null; // a backtest running now
-  cycle?: { started: string; finished: string | null; step: string | null; steps: string[]; at: string;
-            result?: { exits: number; opened: number }; error?: string } | null; // the trader's current/last cycle
+  cycle?: { started: string; finished: string | null; step: string | null; steps: string[]; at: string; count?: number;
+            day?: string; next_at?: string | null; result?: { exits: number; opened: number }; error?: string;
+            received?: Received | null } | null; // the trader's current/last cycle
 };
 
 export type PricePoint = { d: string; close: number; upper: number | null; lower: number | null; mid: number | null; rsi: number | null; macd_hist: number | null };
@@ -107,6 +108,14 @@ export type BacktestRun = {
     equity: { ts: string; equity: number }[];
     trades: { id: string; strategy: string; opened: string; closed: string; pnl: number; max_loss: number; exit: string | null; pop: number | null; description: string | null }[];
   };
+};
+
+/** What one trading cycle got back from IBKR. */
+export type Received = {
+  spots: Record<string, number>;
+  chains: { symbol: string; dte: [number, number]; expiries: string[]; quotes: number; with_greeks: number; cached: boolean }[];
+  quote_requests: number; quotes: number; quotes_with_greeks: number; histories: number; positions: number;
+  notices?: { code: number; count: number; text: string }[];
 };
 
 export type ChatMessage = { role: "user" | "assistant"; content: string; tools?: string[] };

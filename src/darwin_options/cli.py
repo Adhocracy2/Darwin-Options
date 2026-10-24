@@ -34,6 +34,7 @@ def run_loop(eng, interval: int, log, max_cycles: int | None = None) -> None:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     cycles = 0
+    eng.loop_interval_s = interval  # so the dashboard can show when the next cycle starts
     while not stop.is_set():
         try:
             log.info("cycle: %s", eng.run_once())

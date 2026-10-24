@@ -225,6 +225,9 @@ class IBKRConfig:
     market_data_type: int = 1  # 1 = live only; 3 = live where subscribed, delayed otherwise
     # What's live with type 3 (depends on your IBKR subscriptions): OPRA makes option quotes live;
     # the stock's own price needs a US equity subscription (e.g. NYSE Arca / Network B).
+    # How option quotes are fetched: "stream" (subscribe, take the prices as they arrive, cancel;
+    # seconds per batch) or "snapshot" (one-off snapshots; ~11 s per batch on live data).
+    quote_mode: str = "stream"
     live_options: bool = False
     live_stock: bool = False
     max_expiries: int = 2  # expiries fetched per chain request (keeps requests within IB pacing)

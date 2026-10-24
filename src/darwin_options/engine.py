@@ -75,6 +75,7 @@ class Engine:
         self.stop_requested = False  # set on SIGTERM: place no new orders, finish the cycle
         self._daily_collected: dict = {}  # ticker -> date its daily chain was recorded
         self._cycle_state: dict = {}
+        self.loop_interval_s: int | None = None  # set by `darwin loop`
         self._build_strategies()
         self.refresh_settings()
 
@@ -388,6 +389,18 @@ class Engine:
         self.store.save_scan(trim_scan(rows))
         return opened
 
+    def _received(self, notices_before: dict) -> dict | None:
+        """What this cycle got back from IBKR: prices, option chains, quotes, account/positions, notices."""
+        rec = getattr(self.md, "received", None)
+        if rec is None:
+            return None
+        out = {k: v for k, v in rec.items()}
+        out["positions"] = len(self.store.positions("open"))
+        if self.session is not None:
+            out["notices"] = [{"code": c, "count": n - notices_before.get(c, 0), "text": self.session.notice_text.get(c, "")}
+                              for c, n in sorted(self.session.notices.items()) if n - notices_before.get(c, 0) > 0]
+        return out
+
     def opening_wait(self) -> str | None:
         """Why new trades must wait (the first minutes after the open), or None."""
         mins = self.cfg.risk.no_entries_after_open_min
@@ -484,7 +497,14 @@ class Engine:
         acct = self.broker.account()
         if not acct.is_market_open and not force:
             return {"skipped": "market closed"}
-        self._cycle_state = {"started": now(), "finished": None, "steps": []}
+        from . import clock
+        day = (self.now() or clock.now_ny()).date().isoformat()
+        prev = self._cycle_state or self.store.get_setting(CYCLE_KEY)[0] or {}
+        count = (prev.get("count", 0) if prev.get("day") == day else 0) + 1
+        self._cycle_state = {"started": now(), "finished": None, "steps": [], "day": day, "count": count}
+        if hasattr(self.md, "reset_received"):
+            self.md.reset_received()
+        notices_before = dict(self.session.notices) if self.session is not None else {}
         try:
             self._step("reconcile")
             diffs = self.reconcile()
@@ -501,5 +521,8 @@ class Engine:
         except Exception as e:
             self._step(None, finished=now(), error=f"{type(e).__name__}: {e}")
             raise
-        self._step(None, finished=now(), result={"exits": len(result["exits"]), "opened": len(result["opened"])})
+        from datetime import datetime, timedelta
+        nxt = (datetime.fromisoformat(now()) + timedelta(seconds=self.loop_interval_s)).isoformat() if self.loop_interval_s else None
+        self._step(None, finished=now(), next_at=nxt, result={"exits": len(result["exits"]), "opened": len(result["opened"])},
+                   received=self._received(notices_before))
         return result

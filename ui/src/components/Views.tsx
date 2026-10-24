@@ -3,6 +3,7 @@ import type { Candidate, Event, Performance, Position, Snapshot, Stats, Status }
 import { api, pct, signed, usd } from "../api";
 import { EquityChart } from "./EquityChart";
 import { PayoffPanel } from "./PayoffChart";
+import { ReceivedCard } from "./ReceivedCard";
 import { ReviewCard } from "./ReviewCard";
 import { RiskCard } from "./RiskCard";
 
@@ -55,6 +56,7 @@ export function Overview({ status, positions, equity, perf }: { status: Status |
         <div className="tile"><div className="label">Win rate</div><div className="value">{pct(perf?.overall.win_rate)}</div></div>
       </div>
       <RiskCard refreshKey={status} live={status?.mode === "live"} />
+      <ReceivedCard status={status} />
       <div className="card"><h2>Equity</h2><EquityChart data={equity} /></div>
     </>
   );

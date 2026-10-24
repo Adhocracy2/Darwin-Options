@@ -40,6 +40,14 @@ HISTORY_TIMEOUT_S = 20
 INDEXES = {"SPX": ("CBOE", "SPXW"), "XSP": ("CBOE", "XSP"), "NDX": ("NASDAQ", "NDXP"), "RUT": ("RUSSELL", "RUTW")}  # restart a stream with no update for this long during market hours
 
 
+QUOTE_BATCH = 50  # IBKR paper accounts allow about 100 market data lines at once
+QUOTE_WAIT_S = 3.0  # most quotes arrive within a second; far strikes may never get a bid
+
+
+def _quoted(t) -> bool:
+    return num(t.ask) is not None and num(t.bid) is not None and t.modelGreeks is not None
+
+
 def _price(t) -> float | None:
     return num(t.marketPrice()) or num(t.last) or num(t.close)
 
@@ -181,9 +189,26 @@ class IBKRMarketData:
                 "call_volume": num(t.callVolume), "put_volume": num(t.putVolume)}
 
     async def _tickers(self, contracts: list) -> list:
+        """Quotes for option contracts, QUOTE_BATCH at a time: subscribe, wait until each has a bid,
+        an ask and greeks (or QUOTE_WAIT_S passes), then unsubscribe. A one-off snapshot waits ~11 s
+        per batch for IBKR to say it's finished, which made cycles take 10 minutes on live data."""
+        ib = self.s.ib
         out = []
-        for i in range(0, len(contracts), 50):
-            out.extend(await self.s.ib.reqTickersAsync(*contracts[i:i + 50]))
+        if self.s.cfg.quote_mode == "snapshot":
+            for i in range(0, len(contracts), QUOTE_BATCH):
+                out.extend(await ib.reqTickersAsync(*contracts[i:i + QUOTE_BATCH]))
+            return out
+        for i in range(0, len(contracts), QUOTE_BATCH):
+            batch = contracts[i:i + QUOTE_BATCH]
+            tickers = [ib.reqMktData(c, "", False, False) for c in batch]
+            try:
+                deadline = time.monotonic() + QUOTE_WAIT_S
+                while time.monotonic() < deadline and not all(_quoted(t) for t in tickers):
+                    await asyncio.sleep(0.1)
+            finally:
+                for c in batch:
+                    ib.cancelMktData(c)
+            out.extend(tickers)
         return out
 
     def chain(self, symbol: str, dte_min: int, dte_max: int, right: Right | None = None,

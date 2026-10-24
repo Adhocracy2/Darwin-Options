@@ -4,6 +4,7 @@
  * IBKR's servers). Every link shows two-way traffic: yellow dots out, cyan dots back.
  */
 import * as THREE from "three";
+import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { Stage } from "../stage";
 import {
   cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, roundedSlab,
@@ -173,6 +174,60 @@ function ispTower() {
 }
 
 /** A plain status line (no traffic): green working, red broken, gray unknown. */
+/**
+ * A small database floating over the Market Data platform: while prices are being saved for
+ * backtests it glows, its rings spin and price chips rise from the platform into it.
+ */
+function dataSaver() {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: "#1b3a4a", roughness: 0.4, metalness: 0.4, emissive: "#22b8cf", emissiveIntensity: 0.05 });
+  const ringMat = new THREE.MeshBasicMaterial({ color: "#22b8cf", transparent: true, opacity: 0.35 });
+  for (let i = 0; i < 3; i++) { // stacked disks: the usual database symbol
+    const disk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.26, 32), bodyMat);
+    disk.position.y = i * 0.32;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.025, 6, 40), ringMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = i * 0.32 + 0.13;
+    g.add(disk, ring);
+  }
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.03, 8, 48), new THREE.MeshBasicMaterial({
+    color: "#66d9e8", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 0.32;
+  g.add(halo);
+  const chipGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+  const chipMat = new THREE.MeshBasicMaterial({ color: "#66d9e8", transparent: true });
+  const chips = Array.from({ length: 10 }, (_, i) => {
+    const m = new THREE.Mesh(chipGeo, chipMat.clone());
+    m.userData = { phase: i / 10, angle: (i / 10) * Math.PI * 2 };
+    m.visible = false;
+    g.add(m);
+    return m;
+  });
+  let on = false;
+  return {
+    group: g,
+    set(saving: boolean) { on = saving; },
+    tick(t: number, dt: number) {
+      const k = on ? 1 : 0;
+      bodyMat.emissiveIntensity += ((on ? 0.6 : 0.05) - bodyMat.emissiveIntensity) * Math.min(1, dt * 4);
+      ringMat.opacity = 0.35 + 0.4 * k * (0.5 + 0.5 * Math.sin(t * 6));
+      (halo.material as THREE.MeshBasicMaterial).opacity = k * (0.6 - 0.6 * ((t * 1.2) % 1));
+      halo.scale.setScalar(1 + ((t * 1.2) % 1) * 0.8 * k);
+      g.rotation.y += dt * (on ? 1.5 : 0.2);
+      for (const c of chips) {
+        c.visible = on;
+        if (!on) continue;
+        const u = (t * 0.6 + c.userData.phase) % 1; // rise from the platform (-2.2) into the database (0)
+        const r = 1.1 * (1 - u);
+        c.position.set(Math.cos(c.userData.angle) * r, -2.2 + u * 2.4, Math.sin(c.userData.angle) * r);
+        (c.material as THREE.MeshBasicMaterial).opacity = Math.min(1, u * 4) * (1 - Math.max(0, (u - 0.85) / 0.15));
+        c.rotation.x += dt * 3;
+      }
+    },
+  };
+}
+
 function statusLine(a: THREE.Vector3, b: THREE.Vector3, height = 1.2) {
   const mid = a.clone().lerp(b, 0.5);
   mid.y += height;
@@ -541,6 +596,28 @@ function build(stage: Stage, world: World) {
   let speed = 1;
   let current = world;
   let working: string[] = [], fast = false, lastFinished: string | null = null;
+  // Market Data: saving prices for backtests
+  const saver = dataSaver();
+  const dataAt = centers.get("data");
+  if (dataAt) {
+    saver.group.position.copy(dataAt).add(new THREE.Vector3(0, 2.6, 0));
+    root.add(saver.group);
+  }
+  const saveTagEl = document.createElement("div");
+  saveTagEl.className = "cc-save";
+  saveTagEl.innerHTML = "<i></i>SAVING PRICES<span>for backtests</span>";
+  const saveTag = new CSS2DObject(saveTagEl);
+  saveTag.position.copy(saver.group.position).add(new THREE.Vector3(0, 1.5, 0));
+  saveTag.visible = false;
+  root.add(saveTag);
+  const setSaving = (w: World) => {
+    const recent = (ts: string | null, s: number) => !!ts && Date.now() - new Date(ts).getTime() < s * 1000;
+    const cy = w.brain.cycle;
+    const saving = recent(w.brain.pricesSavedAt, 20) || (!!cy && !cy.finished && ["scan", "collect"].includes(cy.step ?? "") && recent(cy.at, 600));
+    saver.set(saving);
+    saveTag.visible = saving;
+  };
+
   const tasks = taskRunner(root, linkCurves, (id) => blocks.get(id),
     () => working, () => supBusy, () => fast, (id) => world.teams.find((t) => t.id === id)?.color ?? "#ffd43b");
   const apply = (w: World) => {
@@ -555,6 +632,7 @@ function build(stage: Stage, world: World) {
     linkTechGw.set(w.brain.gatewayUp ? "ok" : "down");
     renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
+    setSaving(w);
     // animate only real work: a backtest, or the step the trader is on right now
     const cy = w.brain.cycle;
     const fresh = (ts?: string | null) => !!ts && Date.now() - new Date(ts).getTime() < 10 * 60_000;
@@ -606,6 +684,7 @@ function build(stage: Stage, world: World) {
     ringHaloMat.opacity = 0.1 + 0.12 * pulse;
     ringOuterMat.opacity = 0.03 + 0.06 * pulse;
     tasks.tick(dt);
+    saver.tick(t, dt);
     blocks.forEach((b) => b.tick(t));
     gw.tick(t);
     isp.tick(t);
