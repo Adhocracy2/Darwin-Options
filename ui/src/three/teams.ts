@@ -23,6 +23,8 @@ export type Team = {
   alert?: string;
   /** Optional outside link, shown on hover (e.g. IBKR's web login). */
   link?: { href: string; label: string };
+  /** Overall health, for teams shown with a tick or cross (Technology). */
+  health?: "ok" | "bad" | "unknown";
 };
 
 export type TeamId = "data" | "scanner" | "risk" | "trading" | "portfolio" | "exits" | "review" | "news" | "technology";
@@ -383,6 +385,7 @@ export function buildWorld(d: Inputs): World {
       { label: "Version", value: s?.version ?? "–" },
     ],
     alert: down.length ? `${down.join(", ")} down` : undefined,
+    health: down.length ? "bad" : ok === checks.length ? "ok" : "unknown",
   });
 
   return {

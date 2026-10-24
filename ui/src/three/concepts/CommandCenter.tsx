@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { Stage } from "../stage";
 import {
-  cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, roundedSlab,
+  cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, nameSign, roundedSlab, tickCross,
   type Palette, type TeamBlock,
 } from "../kit";
 import type { LineState, SystemInfo, Team, TeamId, World } from "../teams";
@@ -430,6 +430,7 @@ function build(stage: Stage, world: World) {
   const cards = new Map<string, ReturnType<typeof makeCard>>();
   const centers = new Map<string, THREE.Vector3>();
 
+  const techMark = tickCross();
   // ---- teams on the ring
   for (const team of world.teams) {
     const c = posOf(team.id);
@@ -448,12 +449,25 @@ function build(stage: Stage, world: World) {
     const top = TOP.has(team.id);
     linkCurves.set(team.id, platformLink(c, team.color));
 
-    const card = makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1 })); // full details on click
+    // the name stands on the platform; the card keeps just the numbers (full details on click)
+    const sign = nameSign(team.name, team.color);
+    const outward = new THREE.Vector3(c.x, 0, c.z).normalize();
+    sign.position.copy(c).add(new THREE.Vector3(0, 2.5, 0));
+    if (!TOP.has(team.id)) sign.position.addScaledVector(outward, 1.6); // floor teams: outer edge, clear of the circle above
+    sign.userData.teamId = team.id;
+    root.add(sign);
+    if (team.id === "technology") { // no card: a big tick or cross on the platform says it all
+      techMark.group.position.copy(c);
+      techMark.group.userData.teamId = "technology";
+      sign.position.y += 0.9;
+      root.add(techMark.group);
+      continue;
+    }
+    const card = makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1, name: false }));
     const out = c.clone().normalize();
     // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
     // so nothing covers the middle (the engine and its summary)
-    if (team.id === "technology") card.obj.position.copy(c).add(new THREE.Vector3(4.6, 0.6, 1.2)); // to the right: clear of its strip and the banner
-    else if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
+    if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
     else if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
     else card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.6, 0, -1.2)); // beside, at floor level, clear of the circle
     root.add(card.obj);
@@ -667,9 +681,12 @@ function build(stage: Stage, world: World) {
   sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, -0.6, 0)).addScaledVector(SIDE, -2.4), 0);
   sysCard("router", ROUTER.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, 1.8), 0);
   sysCard("isp", ISP.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, 1.8), 0);
-  const supCard = makeCard(asTeam(sysOf(world, "supervisor")), "cc-sup", stage,
-    () => `<i></i><b>SUPERVISOR</b><span>Click to chat</span>`);
-  supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.1, 0));
+  const supSign = nameSign("Supervisor", "#ffd43b");
+  supSign.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.5, 0));
+  supSign.userData.teamId = "supervisor";
+  root.add(supSign);
+  const supCard = makeCard(asTeam(sysOf(world, "supervisor")), "cc-sup", stage, () => `<i></i><span>Click to chat</span>`);
+  supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 3.5, 0));
   root.add(supCard.obj);
   cards.set("supervisor", supCard);
 
@@ -681,7 +698,9 @@ function build(stage: Stage, world: World) {
   const saver = dataSaver();
   const dataAt = centers.get("data");
   if (dataAt) {
-    saver.group.position.copy(dataAt).add(new THREE.Vector3(0, 2.6, 0));
+    const away = new THREE.Vector3(dataAt.x, 0, dataAt.z).normalize();
+    const side = new THREE.Vector3(-away.z, 0, away.x);
+    saver.group.position.copy(dataAt).addScaledVector(side, -2.6).add(new THREE.Vector3(0, 2.0, 0)); // beside, clear of its name
     root.add(saver.group);
   }
   const saveTagEl = document.createElement("div");
@@ -714,6 +733,7 @@ function build(stage: Stage, world: World) {
     renderTech(w);
     linkGwIbkr.set(asLine(w.links.gatewayIbkr));
     setSaving(w);
+    techMark.set(w.teams.find((t) => t.id === "technology")?.health ?? "unknown");
     // animate only real work: a backtest (fast relay), or the step the trader is on right now
     const cy = w.brain.cycle;
     const fresh = (ts?: string | null) => !!ts && Date.now() - new Date(ts).getTime() < 10 * 60_000;
@@ -780,6 +800,7 @@ function build(stage: Stage, world: World) {
     tasks.tick(dt);
     saver.tick(t, dt);
     fx.tick(dt);
+    techMark.tick(t);
     blocks.forEach((b) => b.tick(t));
     gw.tick(t);
     isp.tick(t);

@@ -225,10 +225,11 @@ export function makeCard(team: Team, className: string, stage: Stage, render: (t
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 /** The standard card body: name, big number, a few rows, optional alert pill. */
-export function cardHtml(t: Team, opts: { rows?: number; step?: number } = {}) {
+export function cardHtml(t: Team, opts: { rows?: number; step?: number; name?: boolean } = {}) {
   const rows = t.rows.slice(0, opts.rows ?? 3).map((r) =>
     `<div class="c-row"><span>${esc(r.label)}</span><b class="${r.tone ?? ""}">${esc(r.value)}</b></div>`).join("");
-  return `<div class="c-head"><i style="background:${t.color}"></i>${opts.step ? `<span class="c-step">${opts.step}</span>` : ""}${esc(t.name)}</div>
+  const head = opts.name === false ? "" : `<div class="c-head"><i style="background:${t.color}"></i>${opts.step ? `<span class="c-step">${opts.step}</span>` : ""}${esc(t.name)}</div>`;
+  return `${head}
     <div class="c-big"><b>${esc(t.headline.value)}</b><span>${esc(t.headline.label)}</span></div>
     ${rows}${t.alert ? `<div class="c-alert">${esc(t.alert)}</div>` : ""}
     ${t.link ? `<a class="c-link" href="${esc(t.link.href)}" target="_blank" rel="noopener noreferrer">${esc(t.link.label)} ↗</a>` : ""}`;
@@ -331,4 +332,60 @@ export function disposeGroup(g: THREE.Object3D) {
     if (m.geometry && !Object.values(geo).includes(m.geometry as never)) m.geometry.dispose();
   });
   g.removeFromParent();
+}
+
+
+/** A team's name as a standing sign on its platform (always faces the camera, hidden by things in front). */
+export function nameSign(text: string, color: string) {
+  const c = document.createElement("canvas");
+  const g = c.getContext("2d")!;
+  const font = "800 64px system-ui, sans-serif";
+  g.font = font;
+  const w = Math.ceil(g.measureText(text.toUpperCase()).width) + 48;
+  c.width = w; c.height = 110;
+  g.font = font;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.shadowColor = color; g.shadowBlur = 18;
+  g.fillStyle = "#ffffff";
+  g.fillText(text.toUpperCase(), w / 2, 48);
+  g.shadowBlur = 0;
+  g.fillStyle = color;
+  g.fillRect(24, 92, w - 48, 8); // the team's colour under the name
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  const h = 1.05;
+  sprite.scale.set(h * (w / c.height), h, 1);
+  return sprite;
+}
+
+/** A large tick (all OK) or cross (problem) lying flat, glowing; grey tick when unknown. */
+export function tickCross() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: "#40ff6e", transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+  const bar = (len: number) => new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.6), mat);
+  const tick = new THREE.Group();
+  const a = bar(1.0); a.position.set(-0.55, 0, 0.12); a.rotation.y = -Math.PI / 4;
+  const b = bar(2.0); b.position.set(0.35, 0, -0.25); b.rotation.y = Math.PI / 4;
+  tick.add(a, b);
+  const cross = new THREE.Group();
+  const c1 = bar(2.4); c1.rotation.y = Math.PI / 4;
+  const c2 = bar(2.4); c2.rotation.y = -Math.PI / 4;
+  cross.add(c1, c2);
+  g.add(tick, cross);
+  g.scale.setScalar(2.1); // large: it's the Technology team's whole status
+  let state: "ok" | "bad" | "unknown" = "unknown";
+  return {
+    group: g,
+    set(s: "ok" | "bad" | "unknown") {
+      state = s;
+      tick.visible = s !== "bad"; cross.visible = s === "bad";
+      mat.color.set(s === "ok" ? "#40ff6e" : s === "bad" ? "#ff3b3b" : "#5c677d");
+    },
+    tick(t: number) {
+      mat.opacity = state === "bad" ? 0.6 + 0.35 * Math.sin(t * 5) : 0.85;
+      g.userData.baseY ??= g.position.y; // where it was placed (the platform), floating just above the desks
+      g.position.y = g.userData.baseY + 1.75 + Math.sin(t * 1.5) * 0.05;
+    },
+  };
 }
