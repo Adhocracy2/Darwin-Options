@@ -162,11 +162,13 @@ export function makeTeamBlock(team: Team, opts: {
   shadows?: boolean;
   perRow?: number;
   minSize?: { w: number; d: number }; // smallest floor (default 3.2 x 2.8)
+  name?: boolean; // paint the team's name on a strip along the floor's front edge
 }): TeamBlock {
   const g = new THREE.Group();
   g.userData.teamId = team.id;
   const lay = deskLayout(team.agents.length, opts.perRow);
-  const w = Math.max(lay.width, opts.minSize?.w ?? 3.2), d = Math.max(lay.depth, opts.minSize?.d ?? 2.8);
+  const strip = opts.name ? 1.3 : 0; // extra floor in front of the desks for the name
+  const w = Math.max(lay.width, opts.minSize?.w ?? 3.2), d = Math.max(lay.depth, opts.minSize?.d ?? 2.8) + strip;
   const slab = roundedSlab(w, d, opts.thickness ?? 0.25, 0.35, opts.floor(team.color));
   slab.receiveShadow = !!opts.shadows;
   g.add(slab);
@@ -178,11 +180,16 @@ export function makeTeamBlock(team: Team, opts: {
   }
   const desks = lay.spots.map((s, i) => {
     const desk = makeDesk(opts.palette, opts.shirt ? opts.shirt(team.color, i) : team.color, i + team.id.length, opts.shadows);
-    desk.group.position.set(s.x, 0.01, s.z);
+    desk.group.position.set(s.x, 0.01, s.z - strip / 2);
     desk.group.rotation.y = s.ry;
     g.add(desk.group);
     return desk;
   });
+  if (opts.name) {
+    const label = floorName(team.name, team.color, w - 0.4, 1.2);
+    label.position.set(0, 0.06, d / 2 - 0.68);
+    g.add(label);
+  }
   const update = (t: Team) => t.agents.forEach((a, i) => desks[i]?.setState(a.state));
   update(team);
   const frame = workFrame(w, d, "#7cf9ff");
@@ -335,28 +342,45 @@ export function disposeGroup(g: THREE.Object3D) {
 }
 
 
-/** A team's name as a standing sign on its platform (always faces the camera, hidden by things in front). */
-export function nameSign(text: string, color: string) {
+/** A team's name painted flat on its floor (turns with the platform). Fits inside maxW x h; long names wrap. */
+export function floorName(text: string, color: string, maxW: number, h: number) {
   const c = document.createElement("canvas");
   const g = c.getContext("2d")!;
-  const font = "800 64px system-ui, sans-serif";
+  const font = "900 100px system-ui, sans-serif";
   g.font = font;
-  const w = Math.ceil(g.measureText(text.toUpperCase()).width) + 48;
-  c.width = w; c.height = 110;
+  const label = text.toUpperCase();
+  const width = (t: string) => g.measureText(t).width;
+  // one line, or two split at the best space: whichever gives the bigger letters on the floor
+  const lineH = 96;
+  const letters = (ls: string[]) => {
+    const cw = Math.max(...ls.map(width)) + 40, ch = ls.length * lineH + 22;
+    return Math.min(h, (maxW * ch) / cw) / ls.length;
+  };
+  let lines = [label];
+  const words = label.split(" ");
+  for (let i = 1; i < words.length; i++) {
+    const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+    if (letters(pair) > letters(lines)) lines = pair;
+  }
+  const cw = Math.ceil(Math.max(...lines.map(width))) + 40;
+  c.width = cw; c.height = lines.length * lineH + 22;
   g.font = font;
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.shadowColor = color; g.shadowBlur = 18;
+  g.shadowColor = color; g.shadowBlur = 20;
   g.fillStyle = "#ffffff";
-  g.fillText(text.toUpperCase(), w / 2, 48);
+  lines.forEach((l, i) => g.fillText(l, cw / 2, lineH / 2 + 4 + i * lineH));
   g.shadowBlur = 0;
   g.fillStyle = color;
-  g.fillRect(24, 92, w - 48, 8); // the team's colour under the name
+  g.fillRect(20, c.height - 12, cw - 40, 10); // the team's colour under the name
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  const h = 1.05;
-  sprite.scale.set(h * (w / c.height), h, 1);
-  return sprite;
+  tex.anisotropy = 8;
+  let pw = h * (cw / c.height), ph = h;
+  if (pw > maxW) { ph *= maxW / pw; pw = maxW; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2;
+  return m;
 }
 
 /** A large tick (all OK) or cross (problem) lying flat, glowing; grey tick when unknown. */

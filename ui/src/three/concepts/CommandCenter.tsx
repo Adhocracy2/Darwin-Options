@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { Stage } from "../stage";
 import {
-  cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, nameSign, roundedSlab, tickCross,
+  cardHtml, disposeGroup, makeBrain, makeCard, makeTeamBlock, roundedSlab, tickCross,
   type Palette, type TeamBlock,
 } from "../kit";
 import type { LineState, SystemInfo, Team, TeamId, World } from "../teams";
@@ -441,37 +441,19 @@ function build(stage: Stage, world: World) {
       shirt: (col, j) => new THREE.Color(col).lerp(new THREE.Color(j % 2 ? "#ffffff" : "#1a1a1a"), 0.35).getStyle(),
       edge: "#ffffff",
       minSize: team.id === "technology" ? { w: 3.6, d: 4.9 } : undefined, // room for the IBKR status strip
+      name: true,
     });
     block.group.position.copy(c);
     block.group.rotation.y = Math.PI / 4;
     root.add(block.group);
     blocks.set(team.id, block);
-    const top = TOP.has(team.id);
     linkCurves.set(team.id, platformLink(c, team.color));
 
-    // the name stands on the platform; the card keeps just the numbers (full details on click)
-    const sign = nameSign(team.name, team.color);
-    const outward = new THREE.Vector3(c.x, 0, c.z).normalize();
-    sign.position.copy(c).add(new THREE.Vector3(0, 2.5, 0));
-    if (!TOP.has(team.id)) sign.position.addScaledVector(outward, 1.6); // floor teams: outer edge, clear of the circle above
-    sign.userData.teamId = team.id;
-    root.add(sign);
-    if (team.id === "technology") { // no card: a big tick or cross on the platform says it all
+    if (team.id === "technology") { // a big tick or cross over the platform says how the systems are
       techMark.group.position.copy(c);
       techMark.group.userData.teamId = "technology";
-      sign.position.y += 0.9;
       root.add(techMark.group);
-      continue;
     }
-    const card = makeCard(team, "cc-card compact", stage, (t) => cardHtml(t, { rows: 1, name: false }));
-    const out = c.clone().normalize();
-    // back teams: card floats above and behind; front teams: card sits below, in front of the floor,
-    // so nothing covers the middle (the engine and its summary)
-    if (top) card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.4, 0.4, 0)); // beside its platform
-    else if (c.z > 1) card.obj.position.copy(c).add(new THREE.Vector3(out.x * 2.2, -0.3, out.z * 3.2));
-    else card.obj.position.copy(c).add(new THREE.Vector3((c.x >= 0 ? 1 : -1) * 3.6, 0, -1.2)); // beside, at floor level, clear of the circle
-    root.add(card.obj);
-    cards.set(team.id, card);
   }
 
   // ---- Technology platform: IBKR link status written on its floor, with a + that shows the infrastructure
@@ -483,7 +465,7 @@ function build(stage: Stage, world: World) {
   const techStrip = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 0.82),
     new THREE.MeshBasicMaterial({ map: techTex, transparent: true, depthWrite: false, toneMapped: false }));
   techStrip.rotation.x = -Math.PI / 2;
-  techStrip.position.set(0, 0.06, (techBlock?.size.d ?? 4.9) / 2 - 0.55); // along the front edge, just above the floor
+  techStrip.position.set(0, 0.06, (techBlock?.size.d ?? 4.9) / 2 - 1.8); // just behind the name strip, above the floor
   techStrip.userData.teamId = "tech-toggle";
   techBlock?.group.add(techStrip);
   let infraShown = false;
@@ -608,6 +590,7 @@ function build(stage: Stage, world: World) {
     shirt: () => "#ffd43b", // gold shirt so the Supervisor still stands out
     edge: "#ffffff",
     minSize: { w: 3.2, d: 3.6 }, // same size as the smaller team floors
+    name: true,
   });
   supBlock.group.position.copy(SUPERVISOR);
   linkCurves.set("supervisor", platformLink(SUPERVISOR, "#ffd43b"));
@@ -681,14 +664,7 @@ function build(stage: Stage, world: World) {
   sysCard("ibkr", IBKR.clone().add(new THREE.Vector3(0, -0.6, 0)).addScaledVector(SIDE, -2.4), 0);
   sysCard("router", ROUTER.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, 1.8), 0);
   sysCard("isp", ISP.clone().add(new THREE.Vector3(0, -0.4, 0)).addScaledVector(SIDE, 1.8), 0);
-  const supSign = nameSign("Supervisor", "#ffd43b");
-  supSign.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 2.5, 0));
-  supSign.userData.teamId = "supervisor";
-  root.add(supSign);
-  const supCard = makeCard(asTeam(sysOf(world, "supervisor")), "cc-sup", stage, () => `<i></i><span>Click to chat</span>`);
-  supCard.obj.position.copy(SUPERVISOR).add(new THREE.Vector3(0, 3.5, 0));
-  root.add(supCard.obj);
-  cards.set("supervisor", supCard);
+
 
   let speed = 1;
   let current = world;
