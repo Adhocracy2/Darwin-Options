@@ -196,3 +196,11 @@
 .c3-panel .rx h2 { color: var(--c3-text); }
 .c3-panel .rx .muted, .c3-panel .rx-tiles span, .c3-panel .rx-spots { color: var(--c3-muted); }
 .c3-panel .rx-notices li { color: var(--c3-text); }
+
+/* connection status in the top bar: bright green when OK, boxed amber/red on a problem */
+.c3-pill { font-weight: 700; padding: 2px 9px; border-radius: 6px; border: 2px solid transparent; letter-spacing: 0.02em; }
+.c3-pill.ok { color: #40ff6e; text-shadow: 0 0 8px rgba(64, 255, 110, 0.45); }
+.c3-pill.warn { color: #ffc23d; border-color: #ffb000; background: rgba(255, 176, 0, 0.12); }
+.c3-pill.bad { color: #ff4d4d; border-color: #ff3030; background: rgba(255, 48, 48, 0.14); animation: c3-alarm 1.2s ease-in-out infinite; }
+.c3-pill.unknown { color: var(--c3-muted); border-color: var(--c3-line); }
+@keyframes c3-alarm { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 48, 48, 0.0); } 50% { box-shadow: 0 0 10px 2px rgba(255, 48, 48, 0.55); } }

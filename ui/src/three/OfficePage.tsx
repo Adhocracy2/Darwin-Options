@@ -177,14 +177,25 @@ export default function OfficePage() {
           Ask the Supervisor
         </button>
         <div className="c3-status">
-          <span className={b.gatewayUp ? "ok" : "bad"} title={gw?.error ?? ""}>{b.gatewayUp ? "IB Gateway online" : "IB Gateway offline"}</span>
-          <span className={link === "down" ? "bad" : link === "warn" ? "warn" : gw?.ibkr ? "ok" : ""}>
-            {link === "down" && b.gatewayUp ? "IBKR link lost" : link === "warn" ? "IBKR farm down" : gw?.ibkr ? "IBKR linked" : "IBKR unknown"}
-          </span>
           {(() => {
+            // green text = OK; amber box = warning; red box = problem. The tooltip says what's wrong.
             const n = data.status?.network;
-            if (!n || n.checked_at == null) return null;
-            return <span className={n.internet ? "ok" : "bad"}>{n.internet ? "Internet OK" : n.router ? "Internet down" : "Router down"}</span>;
+            const farms = Object.entries(gw?.farms ?? {}).filter(([, v]) => v === "broken").map(([k]) => k);
+            const items: { label: string; state: "ok" | "warn" | "bad" | "unknown"; why: string }[] = [
+              { label: "IB Gateway", state: b.gatewayUp ? "ok" : "bad", why: b.gatewayUp ? "Darwin is connected" : `Offline${gw?.error ? `: ${gw.error}` : ""}` },
+              {
+                label: "IBKR",
+                state: !b.gatewayUp ? "unknown" : link === "down" ? "bad" : link === "warn" ? "warn" : gw?.ibkr ? "ok" : "unknown",
+                why: !b.gatewayUp ? "unknown while IB Gateway is offline" : link === "down" ? "IB Gateway lost its link to IBKR"
+                  : link === "warn" ? `data farm down: ${farms.join(", ")}` : gw?.ibkr ? "linked" : "not reported yet",
+              },
+              {
+                label: "Internet",
+                state: !n || n.checked_at == null ? "unknown" : n.internet ? "ok" : n.router ? "warn" : "bad",
+                why: !n || n.checked_at == null ? "not checked yet" : n.internet ? `${n.internet_host} answers` : n.router ? "internet down (router OK)" : "router not answering",
+              },
+            ];
+            return items.map((x) => <span key={x.label} className={`c3-pill ${x.state}`} title={x.why}>{x.label}</span>);
           })()}
           <span>{b.mode}</span>
           <span>{b.marketOpen ? "Market open" : "Market closed"}</span>
